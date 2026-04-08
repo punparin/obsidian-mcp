@@ -1,0 +1,8 @@
+services:
+  obsidian-mcp:
+    build: .
+    volumes:
+      - ${OBSIDIAN_VAULT_PATH:-./_test_vault}:/vault
+    environment:
+      - OBSIDIAN_VAULT_PATH=/vault
+    stdin_open: true
