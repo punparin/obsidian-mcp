@@ -33,6 +33,14 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that g
 
 ### Docker (recommended)
 
+Pre-built image from GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/punparin/obsidian-mcp:latest
+```
+
+Or build locally:
+
 ```bash
 git clone https://github.com/punparin/obsidian-mcp.git
 cd obsidian-mcp
@@ -56,7 +64,7 @@ python3 -m venv .venv
 claude mcp add \
   -s user \
   obsidian \
-  -- docker run -i --rm -v /path/to/your/vault:/vault obsidian-mcp
+  -- docker run -i --rm -v /path/to/your/vault:/vault ghcr.io/punparin/obsidian-mcp:latest
 ```
 
 ### Local
