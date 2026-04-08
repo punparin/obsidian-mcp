@@ -156,3 +156,45 @@ class TestSearchByDateRange:
     def test_excludes_out_of_range(self, vault):
         results = vault.search_by_date_range("2025-01-01", "2025-12-31", "date")
         assert len(results) == 0
+
+
+class TestGetOrphanNotes:
+    def test_finds_orphans(self, vault):
+        orphans = vault.get_orphan_notes()
+        paths = [o["path"] for o in orphans]
+        # note2.md links to note1 and note3, note1 links to note2 and note3
+        # MOC links to note1 and note2
+        # But note2 is linked by note1 and MOC, note1 is linked by note2, note3, and MOC
+        # note3 is linked by note1 and note2
+        # So no standard notes should be orphans in this fixture
+        # But templates/daily.md is excluded by the templates filter
+        assert "templates/daily.md" not in paths
+
+    def test_excludes_templates(self, vault):
+        orphans = vault.get_orphan_notes()
+        paths = [o["path"] for o in orphans]
+        assert all("templates/" not in p for p in paths)
+
+    def test_excludes_moc(self, vault):
+        orphans = vault.get_orphan_notes()
+        paths = [o["path"] for o in orphans]
+        # MOC file should be excluded even if nothing links to it
+        assert all("MOC" not in vault.index.get(p, vault.index.get(p, type("", (), {"frontmatter": {}}))).frontmatter.get("type", "") for p in paths)
+
+    def test_detects_true_orphan(self, vault, tmp_vault):
+        # Create a note that nothing links to
+        (tmp_vault / "lonely.md").write_text("---\ntitle: Lonely Note\n---\nNo one links to me.")
+        vault.rebuild_index()
+        orphans = vault.get_orphan_notes()
+        paths = [o["path"] for o in orphans]
+        assert "lonely.md" in paths
+
+    def test_orphan_has_metadata(self, vault, tmp_vault):
+        (tmp_vault / "lonely.md").write_text("---\ntitle: Lonely\ntags: [lost]\n---\nAlone.")
+        vault.rebuild_index()
+        orphans = vault.get_orphan_notes()
+        lonely = next(o for o in orphans if o["path"] == "lonely.md")
+        assert lonely["title"] == "Lonely"
+        assert "lost" in lonely["tags"]
+        assert "outgoing_links" in lonely
+        assert "modified" in lonely

@@ -147,6 +147,15 @@ async def get_vault_graph() -> str:
     return json.dumps(graph, indent=2)
 
 
+@mcp.tool()
+async def get_orphan_notes() -> str:
+    """Find notes with zero backlinks — disconnected knowledge not linked from anywhere else. Excludes templates and MOC files."""
+    orphans = vault.get_orphan_notes()
+    if not orphans:
+        return "No orphan notes found — all notes are linked!"
+    return json.dumps(orphans, indent=2)
+
+
 # ── Templates ──────────────────────────────────────────────────────────
 
 

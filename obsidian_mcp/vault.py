@@ -266,3 +266,31 @@ class Vault:
                 results.append({"path": path, "title": note.title, date_field: str(note_date)})
 
         return results
+
+    def get_orphan_notes(self) -> list[dict]:
+        """Find notes with zero backlinks — disconnected from the vault graph.
+
+        A note is an orphan if no other note links to it via wikilinks.
+        Templates and MOC files are excluded from results.
+        """
+        from .links import get_backlinks
+
+        orphans = []
+        for path, note in self.index.items():
+            # Skip templates and MOC files
+            if "templates/" in path.lower():
+                continue
+            if note.frontmatter.get("type", "").lower() == "moc":
+                continue
+
+            backlinks = get_backlinks(path, self.index)
+            if not backlinks:
+                orphans.append({
+                    "path": path,
+                    "title": note.title,
+                    "tags": note.tags,
+                    "outgoing_links": len(note.links),
+                    "modified": note.modified,
+                })
+
+        return sorted(orphans, key=lambda x: x["modified"])
