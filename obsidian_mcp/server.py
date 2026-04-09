@@ -11,6 +11,22 @@ from .vault import Vault
 from .frontmatter import get_frontmatter as _get_fm, update_frontmatter as _update_fm
 from .links import get_backlinks as _backlinks, get_graph as _graph, extract_wikilinks as _wikilinks
 from .templates import create_from_template as _from_template
+from .lint import (
+    find_broken_wikilinks as _broken_wikilinks,
+    find_stale_notes as _stale_notes,
+    find_duplicate_titles as _duplicate_titles,
+    lint_vault as _lint_vault,
+)
+from .schema import (
+    get_schema as _get_schema,
+    validate_note_schema as _validate_note,
+    validate_vault_schema as _validate_vault,
+)
+from .ingest import (
+    list_inbox as _list_inbox,
+    find_related_notes as _find_related,
+    archive_inbox_note as _archive_inbox,
+)
 
 # Logging to stderr (STDIO transport requirement)
 logging.basicConfig(
@@ -172,6 +188,113 @@ async def create_note_from_template(
     vars_dict = json.loads(variables)
     content = _from_template(vault, template_path, new_note_path, vars_dict)
     return f"Created from template: {new_note_path}\n\n{content}"
+
+
+# ── Lint / Vault Health ────────────────────────────────────────────────
+
+
+@mcp.tool()
+async def find_broken_wikilinks() -> str:
+    """Find all wikilinks that don't resolve to any note in the vault. Critical lint check."""
+    broken = _broken_wikilinks(vault)
+    if not broken:
+        return "No broken wikilinks found."
+    return json.dumps(broken, indent=2)
+
+
+@mcp.tool()
+async def find_stale_notes(months: int = 6) -> str:
+    """Find notes not modified in N months but still linked from recent notes (last 30 days).
+
+    These are old content that people still reference — candidates for review or update.
+    """
+    stale = _stale_notes(vault, months=months)
+    if not stale:
+        return f"No stale notes found (older than {months} months but still referenced)."
+    return json.dumps(stale, indent=2, default=str)
+
+
+@mcp.tool()
+async def find_duplicate_titles() -> str:
+    """Find notes that share the same filename stem in different folders. Causes wikilink ambiguity."""
+    dupes = _duplicate_titles(vault)
+    if not dupes:
+        return "No duplicate titles found."
+    return json.dumps(dupes, indent=2)
+
+
+@mcp.tool()
+async def lint_vault(stale_months: int = 6) -> str:
+    """Run all lint checks: broken wikilinks, stale notes, duplicate titles, orphan notes.
+
+    Returns aggregated report of vault health issues.
+    """
+    report = _lint_vault(vault, stale_months=stale_months)
+    return json.dumps(report, indent=2, default=str)
+
+
+# ── Schema Validation ─────────────────────────────────────────────────
+
+
+@mcp.tool()
+async def get_schema() -> str:
+    """Read the vault's schema.yml — defines note types, required fields, and folder mappings.
+
+    Returns empty dict if no schema is defined.
+    """
+    schema = _get_schema(vault)
+    if not schema:
+        return "No schema.yml found at vault root. Create one to enable validation."
+    return json.dumps(schema, indent=2, default=str)
+
+
+@mcp.tool()
+async def validate_note_schema(path: str) -> str:
+    """Validate a single note against the vault schema. Returns list of errors or 'valid'."""
+    errors = _validate_note(vault, path)
+    if not errors:
+        return f"{path}: valid"
+    return json.dumps({"path": path, "errors": errors}, indent=2)
+
+
+@mcp.tool()
+async def validate_vault_schema() -> str:
+    """Validate every note in the vault against the schema. Returns dict of {path: [errors]}."""
+    issues = _validate_vault(vault)
+    if not issues:
+        return "All notes are valid against the schema."
+    return json.dumps(issues, indent=2, default=str)
+
+
+# ── Inbox / Ingest Workflow ───────────────────────────────────────────
+
+
+@mcp.tool()
+async def list_inbox() -> str:
+    """List notes in the inbox/ folder pending ingestion into the wiki."""
+    items = _list_inbox(vault)
+    if not items:
+        return "Inbox is empty."
+    return json.dumps(items, indent=2, default=str)
+
+
+@mcp.tool()
+async def find_related_notes(content: str, limit: int = 10) -> str:
+    """Given a piece of content (raw note, article, etc.), find existing vault notes that relate to it.
+
+    Uses keyword overlap, tag matching, and wikilink mentions. No AI/embeddings required.
+    Returns top N matches with score and matching reasons.
+    """
+    matches = _find_related(vault, content, limit=limit)
+    if not matches:
+        return "No related notes found."
+    return json.dumps(matches, indent=2, default=str)
+
+
+@mcp.tool()
+async def archive_inbox_note(path: str) -> str:
+    """Move a processed note from inbox/ to archive/YYYY-MM/. Use after ingesting its content into the wiki."""
+    return _archive_inbox(vault, path)
 
 
 # ── Resources ──────────────────────────────────────────────────────────
