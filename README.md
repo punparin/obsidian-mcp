@@ -4,7 +4,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that g
 
 ## Features
 
-**16 tools + 2 resources** for complete vault management:
+**27 tools + 2 resources** for complete vault management and self-maintaining knowledge wiki:
 
 | Group | Tool | Description |
 |---|---|---|
@@ -23,7 +23,18 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that g
 | Links | `get_backlinks` | Find notes linking TO a note |
 | | `get_wikilinks` | Extract outgoing wikilinks |
 | | `get_vault_graph` | Full link graph (nodes + edges) |
+| | `get_orphan_notes` | Find disconnected notes |
 | Templates | `create_note_from_template` | Create note from template with {{variables}} |
+| **Lint** (v0.2) | `find_broken_wikilinks` | Find unresolvable [[links]] |
+| | `find_stale_notes` | Old notes still referenced from recent ones |
+| | `find_duplicate_titles` | Notes with same filename in different folders |
+| | `lint_vault` | Run all lint checks at once |
+| **Schema** (v0.2) | `get_schema` | Read schema.yml from vault root |
+| | `validate_note_schema` | Validate single note against schema |
+| | `validate_vault_schema` | Validate entire vault |
+| **Ingest** (v0.2) | `list_inbox` | List notes pending ingestion |
+| | `find_related_notes` | Find existing notes related to raw content |
+| | `archive_inbox_note` | Move processed note to archive/YYYY-MM/ |
 
 **Resources** (auto-loaded context):
 - `obsidian://vault-map` -- index of all notes (path, title, tags, links, modified, summary)
@@ -117,6 +128,58 @@ Created on {{date}} at {{time}}.
 ```
 
 Built-in variables: `{{title}}`, `{{date}}`, `{{time}}`, `{{datetime}}`
+
+## Self-Maintaining Wiki (v0.2)
+
+Inspired by [Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). Three layers turn your vault into a knowledge base that compounds over time:
+
+### 1. Lint — find rot before it spreads
+
+Run `lint_vault` periodically. It catches:
+- Broken wikilinks (notes you renamed without updating references)
+- Stale notes (old content still linked from recent work — review or update)
+- Duplicate titles (causes wikilink ambiguity)
+- Orphan notes (disconnected knowledge)
+
+### 2. Schema — structured note types
+
+Create `schema.yml` at vault root:
+
+```yaml
+note_types:
+  project:
+    required: [title, status, area]
+    optional: [tags, due_date]
+    status_values: [active, paused, done, archived]
+  decision:
+    required: [title, date, status]
+    optional: [project, participants, tags]
+    status_values: [proposed, decided, superseded]
+  meeting-note:
+    required: [title, date]
+    optional: [participants, project, tags]
+
+folders:
+  projects: project
+  decisions: decision
+  meetings: meeting-note
+```
+
+Then run `validate_vault_schema` to find notes missing required fields.
+
+### 3. Ingest — raw content → wiki
+
+Drop articles, rough notes, or research into vault `inbox/` folder. Workflow:
+
+```
+1. list_inbox                  → see what's pending
+2. read each item              → understand the content
+3. find_related_notes(content) → discover existing notes it relates to
+4. update those notes          → integrate the new knowledge
+5. archive_inbox_note          → move source to archive/YYYY-MM/
+```
+
+Claude does the synthesis. The MCP just handles bookkeeping.
 
 ## Development
 
