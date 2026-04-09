@@ -2,6 +2,75 @@
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that gives Claude Code full read/write access to an Obsidian vault. Built with [FastMCP](https://github.com/jlowin/fastmcp).
 
+## Architecture
+
+```mermaid
+flowchart LR
+    User[You]
+    Claude[Claude Code]
+    Server[Obsidian MCP]
+    Vault[(Obsidian Vault)]
+
+    User --> Claude
+    Claude <--> Server
+    Server --> Vault
+    Vault -.-> Server
+
+    classDef user fill:#e1f5ff,stroke:#333
+    classDef ai fill:#fff4e1,stroke:#333
+    classDef mcp fill:#e8f5e9,stroke:#333
+    classDef store fill:#f3e5f5,stroke:#333
+
+    class User user
+    class Claude ai
+    class Server mcp
+    class Vault store
+```
+
+## Tool Categories
+
+```mermaid
+flowchart TD
+    MCP[Obsidian MCP - 16 tools]
+
+    MCP --> FileOps[File Operations - 6 tools]
+    MCP --> Search[Search - 4 tools]
+    MCP --> Meta[Frontmatter - 2 tools]
+    MCP --> Links[Links and Graph - 3 tools]
+    MCP --> Tpl[Templates - 1 tool]
+    MCP --> Res[Resources - 2 auto-loaded]
+
+    FileOps --> F1[read_note, write_note, append_note, list_notes, delete_note, move_note]
+    Search --> S1[search, search_by_tags, search_by_frontmatter, search_by_date_range]
+    Meta --> FM1[get_note_frontmatter, update_note_frontmatter]
+    Links --> L1[get_backlinks, get_wikilinks, get_vault_graph, get_orphan_notes]
+    Tpl --> T1[create_note_from_template]
+    Res --> R1[vault-map, mocs]
+```
+
+## How Claude Uses Your Vault
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Claude
+    participant MCP as Obsidian MCP
+    participant Vault
+
+    User->>Claude: What did we decide about rate limiting?
+    Claude->>MCP: read vault-map
+    MCP->>Vault: scan notes
+    Vault-->>MCP: notes index
+    MCP-->>Claude: vault structure
+    Claude->>MCP: search_by_tags rate-limiting
+    MCP-->>Claude: matching notes
+    Claude->>MCP: read_note decisions/rate-limiting.md
+    MCP->>Vault: read file
+    Vault-->>MCP: content
+    MCP-->>Claude: full note
+    Claude->>User: We chose token bucket because...
+```
+
 ## Features
 
 **16 tools + 2 resources** for complete vault management:
