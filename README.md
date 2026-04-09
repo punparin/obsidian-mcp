@@ -2,6 +2,76 @@
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that gives Claude Code full read/write access to an Obsidian vault. Built with [FastMCP](https://github.com/jlowin/fastmcp).
 
+## Architecture
+
+```mermaid
+flowchart LR
+    User([👤 You]) -->|prompts| Claude[🤖 Claude Code]
+    Claude <-->|MCP STDIO| Server[Obsidian MCP Server]
+    Server -->|file ops| Vault[(📚 Obsidian Vault)]
+    Vault -.auto-loaded.-> Resources[obsidian://vault-map<br/>obsidian://mocs]
+    Resources -.context.-> Claude
+
+    style User fill:#e1f5ff
+    style Claude fill:#fff4e1
+    style Server fill:#e8f5e9
+    style Vault fill:#f3e5f5
+```
+
+## Tool Categories
+
+```mermaid
+flowchart TD
+    MCP[Obsidian MCP<br/>16 tools + 2 resources]
+
+    MCP --> FileOps[📝 File Operations<br/>6 tools]
+    MCP --> Search[🔍 Search<br/>4 tools]
+    MCP --> Frontmatter[📋 Frontmatter<br/>2 tools]
+    MCP --> Links[🔗 Links & Graph<br/>3 tools]
+    MCP --> Templates[📄 Templates<br/>1 tool]
+    MCP --> Resources[💾 Resources<br/>2 auto-loaded]
+
+    FileOps --> F1[read_note, write_note,<br/>append_note, list_notes,<br/>delete_note, move_note]
+    Search --> S1[search, search_by_tags,<br/>search_by_frontmatter,<br/>search_by_date_range]
+    Frontmatter --> FM1[get_note_frontmatter,<br/>update_note_frontmatter]
+    Links --> L1[get_backlinks, get_wikilinks,<br/>get_vault_graph,<br/>get_orphan_notes]
+    Templates --> T1[create_note_from_template]
+    Resources --> R1[vault-map index,<br/>MOC files]
+
+    style MCP fill:#fff4e1
+    style FileOps fill:#e8f5e9
+    style Search fill:#e3f2fd
+    style Frontmatter fill:#fff3e0
+    style Links fill:#f3e5f5
+    style Templates fill:#fce4ec
+    style Resources fill:#e0f7fa
+```
+
+## How Claude Uses Your Vault
+
+```mermaid
+sequenceDiagram
+    participant U as You
+    participant C as Claude Code
+    participant M as Obsidian MCP
+    participant V as Vault
+
+    U->>C: "What did we decide about API rate limiting?"
+    C->>M: read obsidian://vault-map
+    M->>V: scan all .md files
+    V-->>M: notes index
+    M-->>C: vault structure + metadata
+    C->>M: search_by_tags(["rate-limiting"])
+    M->>V: filter index
+    V-->>M: matching notes
+    M-->>C: list of notes
+    C->>M: read_note("decisions/rate-limiting.md")
+    M->>V: read file
+    V-->>M: content
+    M-->>C: full note
+    C->>U: "We chose token bucket because..."
+```
+
 ## Features
 
 **16 tools + 2 resources** for complete vault management:
