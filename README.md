@@ -6,70 +6,69 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that g
 
 ```mermaid
 flowchart LR
-    User([👤 You]) -->|prompts| Claude[🤖 Claude Code]
-    Claude <-->|MCP STDIO| Server[Obsidian MCP Server]
-    Server -->|file ops| Vault[(📚 Obsidian Vault)]
-    Vault -.auto-loaded.-> Resources[obsidian://vault-map<br/>obsidian://mocs]
-    Resources -.context.-> Claude
+    User[You]
+    Claude[Claude Code]
+    Server[Obsidian MCP]
+    Vault[(Obsidian Vault)]
 
-    style User fill:#e1f5ff
-    style Claude fill:#fff4e1
-    style Server fill:#e8f5e9
-    style Vault fill:#f3e5f5
+    User --> Claude
+    Claude <--> Server
+    Server --> Vault
+    Vault -.-> Server
+
+    classDef user fill:#e1f5ff,stroke:#333
+    classDef ai fill:#fff4e1,stroke:#333
+    classDef mcp fill:#e8f5e9,stroke:#333
+    classDef store fill:#f3e5f5,stroke:#333
+
+    class User user
+    class Claude ai
+    class Server mcp
+    class Vault store
 ```
 
 ## Tool Categories
 
 ```mermaid
 flowchart TD
-    MCP[Obsidian MCP<br/>16 tools + 2 resources]
+    MCP[Obsidian MCP - 16 tools]
 
-    MCP --> FileOps[📝 File Operations<br/>6 tools]
-    MCP --> Search[🔍 Search<br/>4 tools]
-    MCP --> Frontmatter[📋 Frontmatter<br/>2 tools]
-    MCP --> Links[🔗 Links & Graph<br/>3 tools]
-    MCP --> Templates[📄 Templates<br/>1 tool]
-    MCP --> Resources[💾 Resources<br/>2 auto-loaded]
+    MCP --> FileOps[File Operations - 6 tools]
+    MCP --> Search[Search - 4 tools]
+    MCP --> Meta[Frontmatter - 2 tools]
+    MCP --> Links[Links and Graph - 3 tools]
+    MCP --> Tpl[Templates - 1 tool]
+    MCP --> Res[Resources - 2 auto-loaded]
 
-    FileOps --> F1[read_note, write_note,<br/>append_note, list_notes,<br/>delete_note, move_note]
-    Search --> S1[search, search_by_tags,<br/>search_by_frontmatter,<br/>search_by_date_range]
-    Frontmatter --> FM1[get_note_frontmatter,<br/>update_note_frontmatter]
-    Links --> L1[get_backlinks, get_wikilinks,<br/>get_vault_graph,<br/>get_orphan_notes]
-    Templates --> T1[create_note_from_template]
-    Resources --> R1[vault-map index,<br/>MOC files]
-
-    style MCP fill:#fff4e1
-    style FileOps fill:#e8f5e9
-    style Search fill:#e3f2fd
-    style Frontmatter fill:#fff3e0
-    style Links fill:#f3e5f5
-    style Templates fill:#fce4ec
-    style Resources fill:#e0f7fa
+    FileOps --> F1[read_note, write_note, append_note, list_notes, delete_note, move_note]
+    Search --> S1[search, search_by_tags, search_by_frontmatter, search_by_date_range]
+    Meta --> FM1[get_note_frontmatter, update_note_frontmatter]
+    Links --> L1[get_backlinks, get_wikilinks, get_vault_graph, get_orphan_notes]
+    Tpl --> T1[create_note_from_template]
+    Res --> R1[vault-map, mocs]
 ```
 
 ## How Claude Uses Your Vault
 
 ```mermaid
 sequenceDiagram
-    participant U as You
-    participant C as Claude Code
-    participant M as Obsidian MCP
-    participant V as Vault
+    actor User
+    participant Claude
+    participant MCP as Obsidian MCP
+    participant Vault
 
-    U->>C: "What did we decide about API rate limiting?"
-    C->>M: read obsidian://vault-map
-    M->>V: scan all .md files
-    V-->>M: notes index
-    M-->>C: vault structure + metadata
-    C->>M: search_by_tags(["rate-limiting"])
-    M->>V: filter index
-    V-->>M: matching notes
-    M-->>C: list of notes
-    C->>M: read_note("decisions/rate-limiting.md")
-    M->>V: read file
-    V-->>M: content
-    M-->>C: full note
-    C->>U: "We chose token bucket because..."
+    User->>Claude: What did we decide about rate limiting?
+    Claude->>MCP: read vault-map
+    MCP->>Vault: scan notes
+    Vault-->>MCP: notes index
+    MCP-->>Claude: vault structure
+    Claude->>MCP: search_by_tags rate-limiting
+    MCP-->>Claude: matching notes
+    Claude->>MCP: read_note decisions/rate-limiting.md
+    MCP->>Vault: read file
+    Vault-->>MCP: content
+    MCP-->>Claude: full note
+    Claude->>User: We chose token bucket because...
 ```
 
 ## Features
