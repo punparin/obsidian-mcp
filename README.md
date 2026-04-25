@@ -107,6 +107,9 @@ sequenceDiagram
 | **Semantic** (v0.3) | `semantic_search` | Embedding + graph-aware re-rank over note chunks |
 | | `rebuild_embeddings` | Full re-embed of the vault (idempotent) |
 | | `embedding_stats` | Inspect the embedding index (counts, model, path) |
+| **Suggest** (v0.5) | `suggest_links` | Find note pairs that look related but aren't wikilinked |
+| | `apply_link_suggestion` | Append `See also: [[target]]` (idempotent) |
+| | `dismiss_link_suggestion` | Hide a pair from future suggestions (persistent) |
 
 **Resources** (auto-loaded context):
 - `obsidian://vault-map` -- index of all notes (path, title, tags, links, modified, summary)
@@ -212,6 +215,33 @@ bias is deliberate. Tune via `OBSIDIAN_W_SEM`, `OBSIDIAN_W_LINK`,
 
 **Disabling:** set `OBSIDIAN_EMBEDDER=none` to skip all of this; the three
 new tools will no-op and `find_related_notes` falls back to lexical.
+
+## Auto-Link Suggestions (v0.5)
+
+Find pairs of notes that look related but aren't wikilinked yet — and
+grow your graph without re-reading the whole vault.
+
+**How it works:**
+
+1. For each note, embed the body and pull the top-K nearest neighbors
+   from the chunk vector store.
+2. Skip self-pairs and pairs already wikilinked in either direction
+   (treated as undirected) and pairs you've previously dismissed.
+3. Score = `0.7 * cos_sim + 0.3 * tag_jaccard`. Above a threshold
+   (default 0.55) it shows up as a suggestion.
+4. Dedupe by canonical pair so A→B and B→A are one suggestion.
+
+```python
+# MCP tools
+suggest_links(path="", limit=25, min_score=0.55)
+apply_link_suggestion(source, target)   # idempotent — adds "See also: [[target]]"
+dismiss_link_suggestion(source, target) # persistent across runs
+```
+
+The Vault Explorer has a **Link suggestions** tab that lists results
+with score + shared tags + snippet, plus per-row Apply / Dismiss
+buttons. Apply re-fetches the index naturally on the next scan, so
+applied pairs disappear automatically once the vault is updated.
 
 ## Live Vault Sync
 
