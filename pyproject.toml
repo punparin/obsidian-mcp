@@ -18,6 +18,13 @@ dev = [
     "pytest-asyncio>=0.25",
     "ruff>=0.5",
 ]
+explorer = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+]
+
+[tool.setuptools.package-data]
+"obsidian_mcp.explorer" = ["static/*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

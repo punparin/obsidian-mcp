@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Obsidian MCP — Vault Explorer</title>
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #161b22;
+    --panel2: #1f2630;
+    --border: #2a3441;
+    --fg: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --good: #56d364;
+    --warn: #e3b341;
+    --pink: #ff7b72;
+    --purple: #d2a8ff;
+    --cyan: #76e4f7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  header .stats {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  #app {
+    display: grid;
+    grid-template-columns: 360px 1fr 1fr;
+    grid-template-rows: 1fr;
+    height: calc(100vh - 45px);
+  }
+  .panel {
+    overflow: auto;
+    border-right: 1px solid var(--border);
+    padding: 16px;
+  }
+  .panel:last-child { border-right: none; }
+  .panel h2 {
+    margin: 0 0 8px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+  }
+  textarea, input[type="text"] {
+    width: 100%;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    resize: vertical;
+  }
+  textarea:focus, input:focus { outline: none; border-color: var(--accent); }
+  button {
+    background: var(--accent);
+    color: #0d1117;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { filter: brightness(1.1); }
+  button.secondary {
+    background: var(--panel2);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    font-weight: normal;
+  }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  label.k { font-size: 12px; color: var(--muted); }
+  .weights { display: flex; flex-direction: column; gap: 8px; }
+  .weight-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 50px;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .weight-row span:first-child { color: var(--muted); }
+  .weight-row input[type=range] { width: 100%; }
+  .weight-row .val { color: var(--fg); text-align: right; }
+  .preset-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .preset-row button { font-size: 11px; padding: 4px 8px; }
+
+  .results { display: flex; flex-direction: column; gap: 10px; }
+  .result {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .result:hover { border-color: var(--accent); }
+  .result.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .result .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .result .title { font-weight: 600; font-size: 14px; color: var(--fg); }
+  .result .path { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); }
+  .result .score {
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+    color: var(--good);
+    font-variant-numeric: tabular-nums;
+  }
+  .result .snippet {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin: 6px 0;
+    border-left: 2px solid var(--border);
+    padding-left: 8px;
+    white-space: pre-wrap;
+  }
+  .breakdown {
+    display: grid;
+    grid-template-columns: 60px 1fr 60px;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .breakdown .lbl { color: var(--muted); }
+  .breakdown .bar {
+    height: 6px;
+    background: var(--panel2);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+  .breakdown .bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+  }
+  .breakdown .num { color: var(--fg); text-align: right; }
+  .signal-tags {
+    display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;
+  }
+  .pill {
+    font-size: 10px;
+    padding: 2px 6px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--muted);
+  }
+  .pill.on-link { color: var(--cyan); border-color: var(--cyan); }
+  .pill.on-tag { color: var(--purple); border-color: var(--purple); }
+  .pill.on-neighbor { color: var(--warn); border-color: var(--warn); }
+
+  #graph {
+    width: 100%;
+    height: 100%;
+    background: var(--panel);
+  }
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 40px 20px;
+    font-size: 13px;
+  }
+  .swatch {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 4px; vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>obsidian-mcp · vault explorer</h1>
+  <div class="stats" id="stats">connecting…</div>
+</header>
+<div id="app">
+
+  <!-- LEFT: query + weights -->
+  <div class="panel">
+    <h2>Query</h2>
+    <textarea id="query" rows="4" placeholder="What did I think about graph retrieval? Reference [[a-note]] and #tags carry signal."></textarea>
+    <div class="row">
+      <label class="k">k <input type="number" id="k" value="8" min="1" max="50" style="width:60px;background:var(--panel2);border:1px solid var(--border);color:var(--fg);padding:4px;border-radius:4px;font-family:ui-monospace,monospace;" /></label>
+      <button id="searchBtn">Search</button>
+    </div>
+
+    <h2 style="margin-top:18px;">Re-rank weights</h2>
+    <div class="weights" id="weights"></div>
+    <div class="preset-row">
+      <button class="secondary" data-preset="default">default</button>
+      <button class="secondary" data-preset="semantic">semantic only</button>
+      <button class="secondary" data-preset="graph">graph heavy</button>
+      <button class="secondary" data-preset="balanced">balanced</button>
+    </div>
+
+    <h2 style="margin-top:18px;">Legend</h2>
+    <div style="font-size:11px;color:var(--muted);line-height:1.7;">
+      <div><span class="swatch" style="background:var(--accent)"></span>cosine similarity (semantic match)</div>
+      <div><span class="swatch" style="background:var(--cyan)"></span>wikilink match — query [[links]] this note</div>
+      <div><span class="swatch" style="background:var(--purple)"></span>tag overlap (Jaccard)</div>
+      <div><span class="swatch" style="background:var(--warn)"></span>graph neighbor (1 or 2 hops)</div>
+      <div><span class="swatch" style="background:var(--pink)"></span>recency (180-day half-life)</div>
+    </div>
+  </div>
+
+  <!-- MIDDLE: results -->
+  <div class="panel">
+    <h2>Ranked notes</h2>
+    <div id="results" class="results">
+      <div class="empty">Type a query and hit search.<br/>Try referencing a note explicitly: <code>[[your-note]]</code> — watch its rank lift.</div>
+    </div>
+  </div>
+
+  <!-- RIGHT: graph -->
+  <div class="panel" style="padding:0;">
+    <div id="graph"></div>
+  </div>
+</div>
+
+<script>
+const COLORS = {
+  sem: '#58a6ff',
+  link: '#76e4f7',
+  tag: '#d2a8ff',
+  neighbor: '#e3b341',
+  recency: '#ff7b72',
+};
+const PRESETS = {
+  default:   { sem: 1.00, link: 0.40, tag: 0.30, neighbor: 0.15, recency: 0.10 },
+  semantic:  { sem: 1.00, link: 0.00, tag: 0.00, neighbor: 0.00, recency: 0.00 },
+  graph:     { sem: 0.50, link: 1.00, tag: 0.80, neighbor: 0.50, recency: 0.10 },
+  balanced:  { sem: 1.00, link: 0.60, tag: 0.50, neighbor: 0.30, recency: 0.20 },
+};
+const KEYS = ['sem', 'link', 'tag', 'neighbor', 'recency'];
+const LABELS = { sem: 'semantic', link: 'wikilink', tag: 'tag', neighbor: 'neighbor', recency: 'recency' };
+
+let weights = { ...PRESETS.default };
+let lastResults = [];
+let cy = null;
+let graphData = null;
+let selectedPath = null;
+
+function buildWeightSliders() {
+  const root = document.getElementById('weights');
+  root.innerHTML = '';
+  for (const k of KEYS) {
+    const row = document.createElement('div');
+    row.className = 'weight-row';
+    row.innerHTML = `
+      <span style="color:${COLORS[k]}">${LABELS[k]}</span>
+      <input type="range" min="0" max="2" step="0.05" value="${weights[k]}" data-k="${k}" />
+      <span class="val" id="val-${k}">${weights[k].toFixed(2)}</span>
+    `;
+    root.appendChild(row);
+  }
+  root.querySelectorAll('input[type=range]').forEach(input => {
+    input.addEventListener('input', e => {
+      const k = e.target.dataset.k;
+      weights[k] = parseFloat(e.target.value);
+      document.getElementById(`val-${k}`).textContent = weights[k].toFixed(2);
+    });
+    input.addEventListener('change', () => {
+      if (document.getElementById('query').value.trim()) doSearch();
+    });
+  });
+}
+
+document.querySelectorAll('button[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    weights = { ...PRESETS[btn.dataset.preset] };
+    buildWeightSliders();
+    if (document.getElementById('query').value.trim()) doSearch();
+  });
+});
+
+document.getElementById('searchBtn').addEventListener('click', doSearch);
+document.getElementById('query').addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') doSearch();
+});
+
+async function doSearch() {
+  const query = document.getElementById('query').value.trim();
+  if (!query) return;
+  const k = parseInt(document.getElementById('k').value, 10) || 8;
+
+  const resBox = document.getElementById('results');
+  resBox.innerHTML = '<div class="empty">searching…</div>';
+  try {
+    const r = await fetch('/api/search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query, k, weights }),
+    });
+    if (!r.ok) throw new Error(`${r.status}`);
+    const data = await r.json();
+    lastResults = data.results || [];
+    renderResults(lastResults);
+    highlightOnGraph(lastResults);
+  } catch (err) {
+    resBox.innerHTML = `<div class="empty">error: ${err.message}</div>`;
+  }
+}
+
+function renderResults(results) {
+  const box = document.getElementById('results');
+  if (!results.length) {
+    box.innerHTML = '<div class="empty">no results</div>';
+    return;
+  }
+  // Find max contribution for bar normalization across the set
+  const allContribs = results.flatMap(r => Object.values(r.contributions || {}));
+  const maxContrib = Math.max(0.001, ...allContribs);
+
+  box.innerHTML = '';
+  results.forEach((r, ix) => {
+    const card = document.createElement('div');
+    card.className = 'result';
+    card.dataset.path = r.path;
+    if (r.path === selectedPath) card.classList.add('selected');
+
+    const sig = r.signals || {};
+    const pills = [];
+    if (sig.wikilink_match) pills.push(`<span class="pill on-link">[[wikilink]]</span>`);
+    if (sig.tag_jaccard > 0) pills.push(`<span class="pill on-tag">#tag ${(sig.tag_jaccard * 100).toFixed(0)}%</span>`);
+    if (sig.neighbor_hops != null) pills.push(`<span class="pill on-neighbor">${sig.neighbor_hops}-hop neighbor</span>`);
+
+    const contribs = r.contributions || {};
+    const breakdown = KEYS.map(k => {
+      const v = contribs[k] || 0;
+      const pct = (v / maxContrib) * 100;
+      return `
+        <div class="breakdown">
+          <span class="lbl" style="color:${COLORS[k]}">${LABELS[k]}</span>
+          <div class="bar"><span style="width:${pct}%;background:${COLORS[k]}"></span></div>
+          <span class="num">+${v.toFixed(3)}</span>
+        </div>
+      `;
+    }).join('');
+
+    card.innerHTML = `
+      <div class="head">
+        <div>
+          <div class="title">${escapeHtml(r.title)} <span style="font-size:11px;color:var(--muted);font-weight:normal;">#${ix + 1}</span></div>
+          <div class="path">${escapeHtml(r.path)}</div>
+        </div>
+        <div class="score">${r.score.toFixed(3)}</div>
+      </div>
+      <div class="snippet">${escapeHtml(r.snippet || '')}</div>
+      <div style="font-size:11px;color:var(--muted);">cos_sim ${r.cos_sim.toFixed(3)} · final ${r.score.toFixed(3)}</div>
+      ${breakdown}
+      <div class="signal-tags">${pills.join('')}</div>
+    `;
+    card.addEventListener('click', () => {
+      selectedPath = r.path;
+      document.querySelectorAll('.result.selected').forEach(el => el.classList.remove('selected'));
+      card.classList.add('selected');
+      focusOnGraph(r.path);
+    });
+    box.appendChild(card);
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+async function loadStats() {
+  try {
+    const r = await fetch('/api/health');
+    const data = await r.json();
+    const s = data.stats || {};
+    document.getElementById('stats').textContent =
+      `vault ${data.vault.split('/').pop()} · ${s.notes || 0} notes · ${s.chunks || 0} chunks · ${s.queue_idle === false ? `pending ${s.queue_pending}` : 'idle'}`;
+  } catch (e) {
+    document.getElementById('stats').textContent = 'offline';
+  }
+}
+
+async function loadGraph() {
+  const r = await fetch('/api/graph');
+  graphData = await r.json();
+  cy = cytoscape({
+    container: document.getElementById('graph'),
+    elements: [
+      ...graphData.nodes.map(n => ({ data: { id: n.path, label: n.title } })),
+      ...graphData.edges.filter(e => e.resolved).map((e, i) => ({
+        data: { id: `e${i}`, source: e.source, target: e.target },
+      })),
+    ],
+    style: [
+      { selector: 'node', style: {
+        'background-color': '#30363d',
+        'label': 'data(label)',
+        'color': '#c9d1d9',
+        'font-size': 9,
+        'text-valign': 'center',
+        'text-halign': 'center',
+        'text-wrap': 'wrap',
+        'text-max-width': 80,
+        'width': 'mapData(degree, 0, 20, 14, 36)',
+        'height': 'mapData(degree, 0, 20, 14, 36)',
+        'border-width': 1,
+        'border-color': '#2a3441',
+      }},
+      { selector: 'node.hit', style: {
+        'background-color': '#58a6ff',
+        'border-color': '#58a6ff',
+        'color': '#fff',
+        'z-index': 100,
+      }},
+      { selector: 'node.top', style: {
+        'background-color': '#56d364',
+        'border-color': '#56d364',
+        'border-width': 3,
+        'color': '#fff',
+        'z-index': 200,
+      }},
+      { selector: 'node.focused', style: {
+        'border-color': '#e3b341',
+        'border-width': 4,
+      }},
+      { selector: 'edge', style: {
+        'width': 1,
+        'line-color': '#2a3441',
+        'curve-style': 'bezier',
+        'opacity': 0.5,
+      }},
+      { selector: 'edge.hit', style: {
+        'line-color': '#76e4f7',
+        'width': 2,
+        'opacity': 1,
+        'z-index': 50,
+      }},
+    ],
+    layout: { name: 'cose', animate: false, randomize: false, idealEdgeLength: 80 },
+  });
+  cy.nodes().forEach(n => n.data('degree', n.degree()));
+  cy.on('tap', 'node', evt => {
+    const path = evt.target.id();
+    selectedPath = path;
+    focusOnGraph(path);
+    const card = document.querySelector(`.result[data-path="${CSS.escape(path)}"]`);
+    if (card) {
+      document.querySelectorAll('.result.selected').forEach(el => el.classList.remove('selected'));
+      card.classList.add('selected');
+      card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  });
+}
+
+function highlightOnGraph(results) {
+  if (!cy) return;
+  cy.elements().removeClass('hit top focused');
+  if (!results.length) return;
+  const paths = new Set(results.map(r => r.path));
+  cy.nodes().forEach(n => {
+    if (paths.has(n.id())) n.addClass('hit');
+  });
+  // Top result gets the green ring
+  const topNode = cy.getElementById(results[0].path);
+  if (topNode) topNode.addClass('top');
+  // Light up any edge between hits
+  cy.edges().forEach(e => {
+    if (paths.has(e.source().id()) && paths.has(e.target().id())) e.addClass('hit');
+  });
+}
+
+function focusOnGraph(path) {
+  if (!cy) return;
+  cy.nodes().removeClass('focused');
+  const node = cy.getElementById(path);
+  if (node && node.length) {
+    node.addClass('focused');
+    cy.animate({ center: { eles: node }, zoom: 1.3 }, { duration: 350 });
+  }
+}
+
+buildWeightSliders();
+loadStats();
+loadGraph().catch(e => console.error('graph load failed', e));
+setInterval(loadStats, 5000);
+</script>
+</body>
+</html>

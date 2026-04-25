@@ -318,14 +318,26 @@ class Vault:
             out["queue_idle"] = self._embed_queue.is_idle()
         return out
 
-    def semantic_search(self, query: str, k: int = 10) -> list[dict]:
-        """Vault-facing facade used by the MCP tool; empty list if disabled."""
+    def semantic_search(
+        self,
+        query: str,
+        k: int = 10,
+        weights: dict[str, float] | None = None,
+    ) -> list[dict]:
+        """Vault-facing facade used by the MCP tool; empty list if disabled.
+
+        ``weights`` lets callers (e.g. the demo UI) override re-rank
+        weights for a single query without mutating env vars.
+        """
         if not self.semantic_enabled:
             return []
         from .semantic import rank
 
         assert self._vector_store is not None and self._embedder is not None
-        return rank(self, self._vector_store, self._embedder, query, limit=k)
+        return rank(
+            self, self._vector_store, self._embedder, query,
+            limit=k, weights=weights,
+        )
 
     def find_related_semantic(self, content: str, limit: int = 10) -> list[dict]:
         """Semantic variant of find_related_notes. Empty list if disabled."""

@@ -33,6 +33,14 @@ OBSIDIAN_VAULT_PATH=/path/to/vault .venv/bin/python -m obsidian_mcp.server
 - `obsidian_mcp/embed_queue.py` — background debounced worker that
   coalesces rapid edits and re-embeds changed chunks only (body_hash
   short-circuit).
+- `obsidian_mcp/explorer/` — Vault Explorer: optional FastAPI sidecar
+  (`pip install -e ".[explorer]"`) for debugging retrieval, visualizing
+  the wikilink graph, and demoing the stack. Ranked results with
+  per-signal contribution bars, slider-tunable re-rank weights, live
+  Cytoscape graph view. Imports `Vault` directly; same SQLite index
+  as the MCP server. Built into a separate Docker image
+  (`Dockerfile.explorer`, published as
+  `ghcr.io/punparin/obsidian-mcp-explorer`).
 
 ## Key Conventions
 - All paths are relative to vault root
