@@ -276,6 +276,120 @@
     font-family: ui-monospace, monospace;
     color: var(--fg);
   }
+
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  .tab {
+    background: transparent;
+    color: var(--muted);
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 14px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    border-radius: 0;
+  }
+  .tab:hover { color: var(--fg); }
+  .tab.active { color: var(--fg); border-bottom-color: var(--accent); }
+
+  .suggest-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-size: 12px;
+  }
+  .suggest-controls input[type="number"] {
+    width: 60px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 4px;
+    border-radius: 4px;
+    font-family: ui-monospace, monospace;
+  }
+
+  .suggestion {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .suggestion .pair {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .suggestion .pair-side {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .suggestion .pair-side .title {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .suggestion .pair-side .path {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .suggestion .arrow { color: var(--muted); font-family: ui-monospace, monospace; }
+  .suggestion .score {
+    font-family: ui-monospace, monospace;
+    color: var(--good);
+    font-size: 13px;
+  }
+  .suggestion .signals {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: var(--muted);
+    margin: 4px 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .suggestion .snippet {
+    font-size: 12px;
+    color: var(--muted);
+    border-left: 2px solid var(--border);
+    padding-left: 8px;
+    line-height: 1.5;
+    margin: 6px 0;
+  }
+  .suggestion .actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .suggestion .actions button {
+    font-size: 11px;
+    padding: 4px 10px;
+  }
+  .suggestion .actions .apply { background: var(--good); color: #0d1117; }
+  .suggestion .actions .dismiss {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .suggestion .actions .dismiss:hover { color: var(--pink); border-color: var(--pink); }
+  .suggestion.applied { border-color: var(--good); opacity: 0.6; }
+  .suggestion.dismissed { border-color: var(--pink); opacity: 0.4; }
 </style>
 </head>
 <body>
@@ -396,11 +510,32 @@
     </div>
   </div>
 
-  <!-- MIDDLE: results -->
+  <!-- MIDDLE: results / suggestions tabs -->
   <div class="panel">
-    <h2>Ranked notes</h2>
-    <div id="results" class="results">
-      <div class="empty">Type a query and hit search.<br/>Try referencing a note explicitly: <code>[[your-note]]</code> — watch its rank lift.</div>
+    <div class="tab-bar">
+      <button class="tab active" data-tab="search">Ranked notes</button>
+      <button class="tab" data-tab="suggest">Link suggestions</button>
+    </div>
+
+    <div id="tab-search" class="tab-pane active">
+      <div id="results" class="results">
+        <div class="empty">Type a query and hit search.<br/>Try referencing a note explicitly: <code>[[your-note]]</code> — watch its rank lift.</div>
+      </div>
+    </div>
+
+    <div id="tab-suggest" class="tab-pane" style="display:none;">
+      <div class="suggest-controls">
+        <label class="k">min score
+          <input type="number" id="suggestMinScore" value="0.55" min="0" max="2" step="0.05" />
+        </label>
+        <label class="k">limit
+          <input type="number" id="suggestLimit" value="25" min="1" max="200" />
+        </label>
+        <button id="suggestRefresh">Scan vault</button>
+      </div>
+      <div id="suggestions" class="results">
+        <div class="empty">Click <b>Scan vault</b> to find note pairs that look related but aren't wikilinked yet.<br/>Each suggestion can be applied (adds <code>See also: [[target]]</code> to the source) or dismissed.</div>
+      </div>
     </div>
   </div>
 
@@ -555,6 +690,106 @@ function renderResults(results) {
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+// ── Tabs ──
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === btn));
+    document.querySelectorAll('.tab-pane').forEach(p => {
+      const isMatch = p.id === `tab-${tab}`;
+      p.classList.toggle('active', isMatch);
+      p.style.display = isMatch ? '' : 'none';
+    });
+  });
+});
+
+// ── Link suggestions ──
+document.getElementById('suggestRefresh').addEventListener('click', loadSuggestions);
+
+async function loadSuggestions() {
+  const min = parseFloat(document.getElementById('suggestMinScore').value) || 0.55;
+  const limit = parseInt(document.getElementById('suggestLimit').value, 10) || 25;
+  const box = document.getElementById('suggestions');
+  box.innerHTML = '<div class="empty">scanning…</div>';
+  try {
+    const r = await fetch(`/api/suggestions?min_score=${min}&limit=${limit}`);
+    if (!r.ok) throw new Error(`${r.status}`);
+    const data = await r.json();
+    renderSuggestions(data.results || []);
+  } catch (err) {
+    box.innerHTML = `<div class="empty">error: ${err.message}</div>`;
+  }
+}
+
+function renderSuggestions(items) {
+  const box = document.getElementById('suggestions');
+  if (!items.length) {
+    box.innerHTML = '<div class="empty">No suggestions above threshold.<br/>Try lowering <b>min score</b> if you want more candidates.</div>';
+    return;
+  }
+  box.innerHTML = '';
+  items.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'suggestion';
+
+    const sharedTags = (item.shared_tags || []).map(t => `<span class="pill on-tag">#${escapeHtml(t)}</span>`).join('');
+    card.innerHTML = `
+      <div class="pair">
+        <div class="pair-side">
+          <div class="title">${escapeHtml(item.source_title)}</div>
+          <div class="path">${escapeHtml(item.source)}</div>
+        </div>
+        <span class="arrow">↔</span>
+        <div class="pair-side">
+          <div class="title">${escapeHtml(item.target_title)}</div>
+          <div class="path">${escapeHtml(item.target)}</div>
+        </div>
+        <span class="score">${item.score.toFixed(3)}</span>
+      </div>
+      <div class="signals">
+        <span>cos_sim ${item.cos_sim.toFixed(3)}</span>
+        <span>tag_jaccard ${item.tag_jaccard.toFixed(3)}</span>
+        ${sharedTags ? `<span>${sharedTags}</span>` : ''}
+        ${item.heading ? `<span style="color:var(--muted)">heading: ${escapeHtml(item.heading)}</span>` : ''}
+      </div>
+      <div class="snippet">${escapeHtml(item.snippet || '')}</div>
+      <div class="actions">
+        <button class="apply" data-action="apply">Apply (add See also)</button>
+        <button class="dismiss" data-action="dismiss">Dismiss</button>
+      </div>
+    `;
+    card.querySelector('[data-action="apply"]').addEventListener('click', async () => {
+      try {
+        const r = await fetch('/api/suggestions/apply', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ source: item.source, target: item.target }),
+        });
+        if (!r.ok) throw new Error(`${r.status}`);
+        card.classList.add('applied');
+        card.querySelector('.actions').innerHTML = `<span style="font-size:11px;color:var(--good);">✓ applied — refresh page to see new graph edge</span>`;
+      } catch (err) {
+        alert(`apply failed: ${err.message}`);
+      }
+    });
+    card.querySelector('[data-action="dismiss"]').addEventListener('click', async () => {
+      try {
+        const r = await fetch('/api/suggestions/dismiss', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ source: item.source, target: item.target }),
+        });
+        if (!r.ok) throw new Error(`${r.status}`);
+        card.classList.add('dismissed');
+        card.querySelector('.actions').innerHTML = `<span style="font-size:11px;color:var(--muted);">dismissed</span>`;
+      } catch (err) {
+        alert(`dismiss failed: ${err.message}`);
+      }
+    });
+    box.appendChild(card);
+  });
 }
 
 async function loadStats() {

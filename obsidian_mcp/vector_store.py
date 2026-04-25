@@ -48,7 +48,19 @@ CREATE TABLE IF NOT EXISTS chunks (
     text        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path);
+
+CREATE TABLE IF NOT EXISTS dismissed_link_suggestions (
+    a            TEXT NOT NULL,
+    b            TEXT NOT NULL,
+    dismissed_at REAL NOT NULL,
+    PRIMARY KEY (a, b)
+);
 """
+
+
+def _canonical_pair(a: str, b: str) -> tuple[str, str]:
+    """Sort the pair so (A, B) and (B, A) hash to the same row."""
+    return (a, b) if a < b else (b, a)
 
 
 def _vec_table_ddl(dim: int) -> str:
@@ -187,6 +199,36 @@ class VectorStore:
             )
 
     # -- Reads ----------------------------------------------------------
+
+    # -- Link-suggestion dismissals -------------------------------------
+
+    def dismiss_pair(self, a: str, b: str) -> None:
+        """Record (a, b) as a dismissed link suggestion. Order-independent."""
+        ca, cb = _canonical_pair(a, b)
+        with self._lock, self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO dismissed_link_suggestions(a, b, dismissed_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(a, b) DO UPDATE SET dismissed_at=excluded.dismissed_at
+                """,
+                (ca, cb, time.time()),
+            )
+
+    def undismiss_pair(self, a: str, b: str) -> None:
+        ca, cb = _canonical_pair(a, b)
+        with self._lock, self._conn:
+            self._conn.execute(
+                "DELETE FROM dismissed_link_suggestions WHERE a = ? AND b = ?",
+                (ca, cb),
+            )
+
+    def get_all_dismissed(self) -> set[tuple[str, str]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT a, b FROM dismissed_link_suggestions"
+            ).fetchall()
+        return {(r[0], r[1]) for r in rows}
 
     def all_paths_with_mtime(self) -> dict[str, float]:
         """Snapshot of every embedded note's mtime — used for startup reconciliation."""

@@ -350,6 +350,46 @@ async def embedding_stats(wait: bool = False) -> str:
     return json.dumps(vault.embedding_stats(wait=wait), indent=2, default=str)
 
 
+@mcp.tool()
+async def suggest_links(path: str = "", limit: int = 25, min_score: float = 0.55) -> str:
+    """Find note pairs that look related but aren't wikilinked yet.
+
+    For each note (or just ``path`` if specified), pulls semantic
+    neighbors from the chunk index, drops pairs that already share a
+    wikilink or were dismissed, scores by cosine + tag overlap, and
+    returns the top ``limit`` above ``min_score``. Use this to grow the
+    vault graph based on what's already in your notes.
+    """
+    if not vault.semantic_enabled:
+        return "Auto-link suggestions need semantic enabled (set OBSIDIAN_EMBEDDER)."
+    results = vault.suggest_links(
+        path=path or None, limit=limit, min_score=min_score,
+    )
+    if not results:
+        return "No suggestions above threshold."
+    return json.dumps(results, indent=2, default=str)
+
+
+@mcp.tool()
+async def apply_link_suggestion(source: str, target: str) -> str:
+    """Append a wikilink from ``source`` to ``target`` (idempotent).
+
+    Adds a ``See also: [[target]]`` line at the end of the source note.
+    Re-applying is a no-op once the link is present.
+    """
+    return vault.apply_link_suggestion(source, target)
+
+
+@mcp.tool()
+async def dismiss_link_suggestion(source: str, target: str) -> str:
+    """Hide this pair from future ``suggest_links`` results.
+
+    Stored persistently in the vector store DB; pair is order-independent.
+    """
+    vault.dismiss_link_suggestion(source, target)
+    return f"dismissed: {source} <-> {target}"
+
+
 # ── Resources ──────────────────────────────────────────────────────────
 
 

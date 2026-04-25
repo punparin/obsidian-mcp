@@ -339,6 +339,71 @@ class Vault:
             limit=k, weights=weights,
         )
 
+    # -- Auto-link suggestions --
+
+    def suggest_links(
+        self,
+        path: str | None = None,
+        limit: int = 25,
+        min_score: float = 0.55,
+    ) -> list[dict]:
+        """Pairs of notes that look related but aren't wikilinked yet.
+
+        Empty list if semantic is disabled (the algorithm needs the
+        chunk vector store).
+        """
+        if not self.semantic_enabled:
+            return []
+        from .suggest import suggest_links
+
+        assert self._vector_store is not None and self._embedder is not None
+        return suggest_links(
+            self, self._vector_store, self._embedder,
+            path=path, limit=limit, min_score=min_score,
+        )
+
+    def dismiss_link_suggestion(self, source: str, target: str) -> None:
+        """Hide this pair from future ``suggest_links`` results."""
+        if self._vector_store is None:
+            return
+        self._vector_store.dismiss_pair(source, target)
+
+    def undismiss_link_suggestion(self, source: str, target: str) -> None:
+        if self._vector_store is None:
+            return
+        self._vector_store.undismiss_pair(source, target)
+
+    def apply_link_suggestion(self, source: str, target: str) -> str:
+        """Append a wikilink from ``source`` to ``target``.
+
+        Inserts ``See also: [[target]]`` at the end of the source note.
+        Idempotent: if any existing wikilink in the source already
+        resolves to the target path (bare stem, full path, alias —
+        whichever Obsidian would resolve), no edit is made.
+        """
+        from pathlib import Path as _Path
+
+        from .links import extract_wikilinks, resolve_wikilink
+
+        try:
+            current = self.read_note(source)
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"source note not found: {source}") from exc
+
+        index = self.index
+        if target not in index:
+            raise FileNotFoundError(f"target note not found: {target}")
+
+        target_stem = _Path(target).stem
+        for link in extract_wikilinks(current):
+            resolved = resolve_wikilink(link, index)
+            if resolved == target:
+                return f"already linked: {source} -> {target_stem}"
+
+        wikilink = f"[[{target_stem}]]"
+        self.append_note(source, f"\n\nSee also: {wikilink}\n")
+        return f"linked: {source} -> {target_stem}"
+
     def find_related_semantic(self, content: str, limit: int = 10) -> list[dict]:
         """Semantic variant of find_related_notes. Empty list if disabled."""
         if not self.semantic_enabled:

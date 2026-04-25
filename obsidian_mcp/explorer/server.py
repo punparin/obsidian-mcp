@@ -24,6 +24,16 @@ class SearchRequest(BaseModel):
     weights: dict[str, float] | None = None
 
 
+class DismissRequest(BaseModel):
+    source: str
+    target: str
+
+
+class ApplyRequest(BaseModel):
+    source: str
+    target: str
+
+
 def _build_vault() -> Vault:
     vault_path = os.environ.get("OBSIDIAN_VAULT_PATH")
     if not vault_path:
@@ -71,6 +81,28 @@ def create_app() -> FastAPI:
     @app.get("/api/graph")
     async def graph() -> dict[str, Any]:
         return get_graph(vault.index)
+
+    @app.get("/api/suggestions")
+    async def suggestions(
+        path: str | None = None, limit: int = 25, min_score: float = 0.55
+    ) -> dict[str, Any]:
+        if not vault.semantic_enabled:
+            raise HTTPException(503, "semantic search disabled")
+        results = vault.suggest_links(path=path, limit=limit, min_score=min_score)
+        return {"results": results, "count": len(results)}
+
+    @app.post("/api/suggestions/dismiss")
+    async def dismiss(req: DismissRequest) -> dict[str, Any]:
+        vault.dismiss_link_suggestion(req.source, req.target)
+        return {"dismissed": [req.source, req.target]}
+
+    @app.post("/api/suggestions/apply")
+    async def apply_(req: ApplyRequest) -> dict[str, Any]:
+        try:
+            msg = vault.apply_link_suggestion(req.source, req.target)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc)) from None
+        return {"message": msg}
 
     @app.get("/api/note")
     async def note(path: str) -> dict[str, Any]:
