@@ -1,4 +1,4 @@
-from obsidian_mcp.frontmatter import get_frontmatter, update_frontmatter, has_frontmatter, get_body
+from obsidian_mcp.frontmatter import get_body, get_frontmatter, has_frontmatter, update_frontmatter
 
 
 class TestHasFrontmatter:

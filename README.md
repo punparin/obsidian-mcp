@@ -350,11 +350,17 @@ Claude does the synthesis. The MCP just handles bookkeeping.
 # Install dev dependencies
 .venv/bin/pip install -e ".[dev]"
 
+# Install the pre-commit hook (one-time, gates `git commit` on lint)
+.venv/bin/pre-commit install
+
 # Run tests
 .venv/bin/pytest tests/ -v
 
 # Lint
 .venv/bin/ruff check .
+
+# Run all hooks across the whole repo (what CI runs)
+.venv/bin/pre-commit run --all-files
 ```
 
 ## Testing with MCP Inspector

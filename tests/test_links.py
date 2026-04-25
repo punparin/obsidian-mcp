@@ -1,4 +1,10 @@
-from obsidian_mcp.links import extract_wikilinks, resolve_wikilink, get_backlinks, get_graph, update_wikilinks_across_vault
+from obsidian_mcp.links import (
+    extract_wikilinks,
+    get_backlinks,
+    get_graph,
+    resolve_wikilink,
+    update_wikilinks_across_vault,
+)
 from obsidian_mcp.vault import NoteIndex
 
 
