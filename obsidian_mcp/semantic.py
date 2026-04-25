@@ -137,6 +137,7 @@ def rank(
     limit: int = 10,
     knn_k: int = DEFAULT_KNN_K,
     exclude_path: str | None = None,
+    weights: dict[str, float] | None = None,
 ) -> list[dict]:
     """Embed ``query_text``, retrieve candidate chunks, aggregate to notes,
     graph-rescore, and return ``limit`` ranked notes.
@@ -145,11 +146,19 @@ def rank(
     wikilinks + tags; a short raw query like "graph retrieval" carries no
     graph signal, but piping the full content of an inbox item here lets
     the explicit structure dominate.
+
+    ``weights`` overrides any of ``sem``/``link``/``tag``/``neighbor``/
+    ``recency`` for this call (e.g. for live demos that tune weights
+    per-request); unspecified keys fall back to env-tuned defaults.
     """
     if not query_text.strip():
         return []
 
     w = _weights()
+    if weights:
+        for k, v in weights.items():
+            if k in w:
+                w[k] = float(v)
     signals_blob = query_for_signals if query_for_signals is not None else query_text
     signals = _extract_query_signals(signals_blob)
 
@@ -212,6 +221,13 @@ def rank(
                 "tag_jaccard": round(tag_bonus, 3),
                 "neighbor_hops": hops,
                 "recency": round(recency, 3),
+            },
+            "contributions": {
+                "sem": round(w["sem"] * cos_sim, 4),
+                "link": round(w["link"] * link_bonus, 4),
+                "tag": round(w["tag"] * tag_bonus, 4),
+                "neighbor": round(w["neighbor"] * neighbor_bonus, 4),
+                "recency": round(w["recency"] * recency, 4),
             },
             "snippet": chunk_hit["text"][:300],
             "heading": chunk_hit["heading"],
