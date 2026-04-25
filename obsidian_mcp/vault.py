@@ -13,6 +13,9 @@ from .frontmatter import get_body, get_frontmatter, has_frontmatter
 from .links import extract_wikilinks, update_wikilinks_across_vault
 
 if TYPE_CHECKING:
+    from .embed_queue import EmbedQueue
+    from .embeddings import EmbeddingBackend
+    from .vector_store import VectorStore
     from .watcher import VaultWatcher
 
 
@@ -53,6 +56,11 @@ class Vault:
         # external edit (Obsidian, git pull, etc.) happened in the meantime.
         self._last_read_mtime: dict[str, float] = {}
         self._watcher: "VaultWatcher" | None = None
+        # Semantic retrieval stack — wired lazily so tests / non-semantic
+        # usage don't pay for model downloads.
+        self._embedder: "EmbeddingBackend" | None = None
+        self._vector_store: "VectorStore" | None = None
+        self._embed_queue: "EmbedQueue" | None = None
 
     # -- Path security --
 
@@ -143,6 +151,7 @@ class Vault:
             if self._index is None:
                 self._index = self._build_index()
             self._index[rel_path] = entry
+        self._enqueue_embed(rel_path)
 
     def _forget_path(self, rel_path: str) -> None:
         """Drop a note from the index (deletion or move-source)."""
@@ -151,6 +160,7 @@ class Vault:
                 return
             self._index.pop(rel_path, None)
             self._last_read_mtime.pop(rel_path, None)
+        self._embed_forget(rel_path)
 
     # -- Watcher lifecycle --
 
@@ -173,6 +183,108 @@ class Vault:
             return
         self._watcher.stop()
         self._watcher = None
+
+    # -- Semantic retrieval lifecycle --
+
+    def enable_semantic(
+        self,
+        embedder: "EmbeddingBackend" | None = None,
+        db_path: "str | None" = None,
+    ) -> bool:
+        """Wire up embeddings + vector store + background embed queue.
+
+        Returns True if enabled. Safe to call multiple times — idempotent.
+        Set ``OBSIDIAN_EMBEDDER=none`` (or pass embedder explicitly) to
+        skip; all semantic tools will fall back to their lexical path.
+        """
+        import os
+
+        if self._embed_queue is not None:
+            return True
+        if os.environ.get("OBSIDIAN_EMBEDDER", "").lower() == "none":
+            return False
+
+        from .embed_queue import EmbedQueue
+        from .embeddings import get_backend
+        from .vector_store import VectorStore
+
+        backend = embedder or get_backend()
+        # Materialise the model early so dim is known before we open the store.
+        backend.embed(["warmup"])
+        store = VectorStore(
+            db_path=db_path or (self.root / ".obsidian-mcp" / "index.db"),
+            dim=backend.dim,
+            model_id=backend.model_id,
+        )
+        q = EmbedQueue(vault=self, store=store, backend=backend)
+        q.start()
+        self._embedder = backend
+        self._vector_store = store
+        self._embed_queue = q
+        return True
+
+    def disable_semantic(self) -> None:
+        if self._embed_queue is not None:
+            self._embed_queue.stop()
+            self._embed_queue = None
+        if self._vector_store is not None:
+            self._vector_store.close()
+            self._vector_store = None
+        self._embedder = None
+
+    @property
+    def semantic_enabled(self) -> bool:
+        return self._embed_queue is not None
+
+    def _enqueue_embed(self, rel_path: str) -> None:
+        if self._embed_queue is not None:
+            self._embed_queue.enqueue(rel_path)
+
+    def _embed_forget(self, rel_path: str) -> None:
+        if self._embed_queue is not None:
+            self._embed_queue.forget(rel_path)
+
+    def rebuild_embeddings(self) -> dict:
+        """Full re-embed of every note in the vault. Idempotent; safe to re-run."""
+        if not self.semantic_enabled:
+            return {"enabled": False}
+        total = 0
+        for path in list(self.index):
+            self._enqueue_embed(path)
+            total += 1
+        # Wait for the queue to drain so callers get a consistent count back.
+        assert self._embed_queue is not None
+        self._embed_queue.wait_idle(timeout=max(30.0, total * 0.5))
+        assert self._vector_store is not None
+        return {"enabled": True, "requested": total, **self._vector_store.stats()}
+
+    def embedding_stats(self) -> dict:
+        if self._vector_store is None:
+            return {"enabled": False}
+        return {"enabled": True, **self._vector_store.stats()}
+
+    def semantic_search(self, query: str, k: int = 10) -> list[dict]:
+        """Vault-facing facade used by the MCP tool; empty list if disabled."""
+        if not self.semantic_enabled:
+            return []
+        from .semantic import rank
+
+        assert self._vector_store is not None and self._embedder is not None
+        return rank(self, self._vector_store, self._embedder, query, limit=k)
+
+    def find_related_semantic(self, content: str, limit: int = 10) -> list[dict]:
+        """Semantic variant of find_related_notes. Empty list if disabled."""
+        if not self.semantic_enabled:
+            return []
+        from .semantic import rank
+
+        assert self._vector_store is not None and self._embedder is not None
+        # Pass the raw content for both embed and signal extraction — tags and
+        # wikilinks in the source text should boost their referenced notes.
+        return rank(
+            self, self._vector_store, self._embedder, content,
+            query_for_signals=content, limit=limit,
+        )
 
     # -- File operations --
 
@@ -215,6 +327,7 @@ class Vault:
         self._last_read_mtime[rel] = file_path.stat().st_mtime
         with self._index_lock:
             self.index[rel] = self._index_single(rel)
+        self._enqueue_embed(rel)
         return f"Written: {path}"
 
     def append_note(self, path: str, content: str) -> str:
@@ -230,6 +343,7 @@ class Vault:
         self._last_read_mtime[rel] = file_path.stat().st_mtime
         with self._index_lock:
             self.index[rel] = self._index_single(rel)
+        self._enqueue_embed(rel)
         return f"Appended: {path}"
 
     def list_notes(self, folder: str = "") -> list[str]:
@@ -268,6 +382,15 @@ class Vault:
         # Update index
         old_rel = self._to_relative(src_path)
         new_rel = self._to_relative(dest_path)
+        # For a rename, the body is unchanged — relabel the vector rows rather
+        # than re-embedding. Must happen before _forget_path drops any trace.
+        if self._vector_store is not None:
+            try:
+                self._vector_store.rename(old_rel, new_rel)
+            except Exception:
+                # Fall back: forget old, re-embed new.
+                self._embed_forget(old_rel)
+                self._enqueue_embed(new_rel)
         self._forget_path(old_rel)
         with self._index_lock:
             self.index[new_rel] = self._index_single(new_rel)
@@ -279,6 +402,9 @@ class Vault:
         with self._index_lock:
             for p in updated:
                 self.index[p] = self._index_single(p)
+        # The linking notes' bodies changed — queue them for re-embed.
+        for p in updated:
+            self._enqueue_embed(p)
 
         return f"Moved: {src} -> {dest} (updated {len(updated)} linking notes)"
 

@@ -73,7 +73,7 @@ sequenceDiagram
 
 ## Features
 
-**27 tools + 2 resources** for complete vault management and self-maintaining knowledge wiki:
+**30 tools + 2 resources** for complete vault management, self-maintaining knowledge wiki, and semantic retrieval:
 
 | Group | Tool | Description |
 |---|---|---|
@@ -102,8 +102,11 @@ sequenceDiagram
 | | `validate_note_schema` | Validate single note against schema |
 | | `validate_vault_schema` | Validate entire vault |
 | **Ingest** (v0.2) | `list_inbox` | List notes pending ingestion |
-| | `find_related_notes` | Find existing notes related to raw content |
+| | `find_related_notes` | Find existing notes related to raw content (semantic when enabled, lexical fallback) |
 | | `archive_inbox_note` | Move processed note to archive/YYYY-MM/ |
+| **Semantic** (v0.3) | `semantic_search` | Embedding + graph-aware re-rank over note chunks |
+| | `rebuild_embeddings` | Full re-embed of the vault (idempotent) |
+| | `embedding_stats` | Inspect the embedding index (counts, model, path) |
 
 **Resources** (auto-loaded context):
 - `obsidian://vault-map` -- index of all notes (path, title, tags, links, modified, summary)
@@ -164,6 +167,44 @@ Set the vault path via environment variable:
 ```bash
 export OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
 ```
+
+## Semantic Retrieval (v0.3)
+
+Local-first semantic search over your vault, using your hand-curated graph
+(wikilinks, tags, frontmatter) to re-rank the raw embedding results.
+
+**How it works:**
+1. On server start, each note's body is split into markdown-aware chunks
+   (H2/H3 sections, packed to ≤1600 chars with paragraph overlap).
+2. Each chunk is embedded with [`fastembed`](https://github.com/qdrant/fastembed)
+   using `BAAI/bge-small-en-v1.5` (ONNX, local, ~100MB download on first run).
+3. Vectors live in `<vault>/.obsidian-mcp/index.db` (SQLite + `sqlite-vec`).
+4. On query: embed the query → top-K chunks via cosine distance →
+   aggregate to notes → re-rank with graph signals.
+
+**Re-rank formula** (weights all env-tunable):
+
+```
+final = 1.00 * cos_sim              # semantic similarity
+      + 0.40 * wikilink_match       # 1 if candidate is [[linked]] from query
+      + 0.30 * tag_jaccard          # |shared tags| / |union|
+      + 0.15 * neighbor_bonus       # 1/hops if within 2 hops of a query-linked note
+      + 0.10 * recency_decay        # exp(-age_days/180)
+```
+
+Your explicit wikilinks can beat a marginally higher semantic score — the
+bias is deliberate. Tune via `OBSIDIAN_W_SEM`, `OBSIDIAN_W_LINK`,
+`OBSIDIAN_W_TAG`, `OBSIDIAN_W_NEIGHBOR`, `OBSIDIAN_W_RECENCY`.
+
+**Lifecycle:**
+- Edits (from MCP or Obsidian) are picked up by the filesystem watcher and
+  re-embedded in the background with a 200ms debounce.
+- Body unchanged? `body_hash` short-circuits the embed.
+- `find_related_notes` automatically uses the semantic pipeline when
+  enabled, with the lexical scorer as a fallback.
+
+**Disabling:** set `OBSIDIAN_EMBEDDER=none` to skip all of this; the three
+new tools will no-op and `find_related_notes` falls back to lexical.
 
 ## Live Vault Sync
 

@@ -74,7 +74,10 @@ def list_inbox(vault: "Vault") -> list[dict]:
 def find_related_notes(vault: "Vault", content: str, limit: int = 10) -> list[dict]:
     """Find existing vault notes related to a piece of content.
 
-    Scoring (no AI required):
+    When semantic retrieval is enabled on the vault, this delegates to the
+    embedding + graph re-rank pipeline (see ``semantic.rank``). Otherwise
+    it falls back to a lexical scorer:
+
     - +5 if existing note's wikilinks include keywords from content
     - +3 per shared tag with content (extract #tags from content)
     - +2 per keyword match in title or path
@@ -82,6 +85,9 @@ def find_related_notes(vault: "Vault", content: str, limit: int = 10) -> list[di
 
     Returns top N matches with score and matching reasons.
     """
+    if vault.semantic_enabled:
+        return vault.find_related_semantic(content, limit=limit)
+
     keywords = _extract_keywords(content)
     keyword_set = set(keywords)
 
