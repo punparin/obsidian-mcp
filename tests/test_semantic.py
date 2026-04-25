@@ -126,6 +126,100 @@ class TestGraphReRank:
         assert top_linked.index("candidate-a.md") <= top_raw.index("candidate-a.md")
 
 
+class TestStartupReconciliation:
+    """`enable_semantic` should diff the on-disk store against the current
+    vault state — picking up offline edits/creates/deletes that the watcher
+    never saw."""
+
+    def test_offline_create_is_enqueued_on_restart(self, tmp_vault):
+        # First server lifetime: enable, embed everything, shut down.
+        v1 = Vault(tmp_vault)
+        backend = FakeBackend(dim=32)
+        db = tmp_vault / ".obsidian-mcp" / "idx.db"
+        v1.enable_semantic(embedder=backend, db_path=db)
+        v1._embed_queue.wait_idle(timeout=10)
+        baseline = v1.embedding_stats()["notes"]
+        v1.disable_semantic()
+
+        # Simulate offline edit: add a note while server is down.
+        (tmp_vault / "offline-new.md").write_text(
+            "---\ntitle: Offline\n---\n\noffline body content."
+        )
+
+        # Second lifetime: reconcile should pick up the new file.
+        v2 = Vault(tmp_vault)
+        v2.enable_semantic(embedder=FakeBackend(dim=32), db_path=db)
+        v2._embed_queue.wait_idle(timeout=10)
+        try:
+            assert v2.embedding_stats()["notes"] == baseline + 1
+            results = v2.semantic_search("offline body content.", k=5)
+            assert any(r["path"] == "offline-new.md" for r in results)
+        finally:
+            v2.disable_semantic()
+
+    def test_offline_delete_is_forgotten_on_restart(self, tmp_vault):
+        v1 = Vault(tmp_vault)
+        db = tmp_vault / ".obsidian-mcp" / "idx.db"
+        v1.enable_semantic(embedder=FakeBackend(dim=32), db_path=db)
+        v1._embed_queue.wait_idle(timeout=10)
+        baseline = v1.embedding_stats()["notes"]
+        assert baseline >= 1
+        v1.disable_semantic()
+
+        # Simulate offline delete.
+        (tmp_vault / "note1.md").unlink()
+
+        v2 = Vault(tmp_vault)
+        v2.enable_semantic(embedder=FakeBackend(dim=32), db_path=db)
+        v2._embed_queue.wait_idle(timeout=10)
+        try:
+            assert v2.embedding_stats()["notes"] == baseline - 1
+            assert v2._vector_store.get_note("note1.md") is None
+        finally:
+            v2.disable_semantic()
+
+    def test_offline_modify_re_embeds(self, tmp_vault):
+        v1 = Vault(tmp_vault)
+        db = tmp_vault / ".obsidian-mcp" / "idx.db"
+        v1.enable_semantic(embedder=FakeBackend(dim=32), db_path=db)
+        v1._embed_queue.wait_idle(timeout=10)
+        v1.disable_semantic()
+
+        # Mutate body and bump mtime past stored value.
+        target = tmp_vault / "note1.md"
+        target.write_text("---\ntitle: Note One\n---\n\nzzz unique marker zzz.")
+        future = target.stat().st_mtime + 5.0
+        import os
+        os.utime(target, (future, future))
+
+        v2 = Vault(tmp_vault)
+        v2.enable_semantic(embedder=FakeBackend(dim=32), db_path=db)
+        v2._embed_queue.wait_idle(timeout=10)
+        try:
+            results = v2.semantic_search("zzz unique marker zzz.", k=5)
+            assert any(r["path"] == "note1.md" for r in results)
+        finally:
+            v2.disable_semantic()
+
+
+class TestEmbeddingStatsFreshness:
+    def test_queue_idle_reported_after_drain(self, sem_vault):
+        # rebuild_embeddings already drained — stats should report idle.
+        stats = sem_vault.embedding_stats()
+        assert stats["queue_idle"] is True
+        assert stats["queue_pending"] == 0
+
+    def test_wait_blocks_until_drained(self, sem_vault):
+        # Schedule an edit; without wait, queue may still be pending.
+        sem_vault.write_note(
+            "freshness.md",
+            "---\ntitle: Freshness\n---\n\nbody body body.",
+        )
+        stats = sem_vault.embedding_stats(wait=True, timeout=10.0)
+        assert stats["queue_idle"] is True
+        assert stats["queue_pending"] == 0
+
+
 class TestFallback:
     def test_semantic_search_disabled_returns_hint(self, tmp_vault):
         vault = Vault(tmp_vault)  # no enable_semantic

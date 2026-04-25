@@ -188,6 +188,12 @@ class VectorStore:
 
     # -- Reads ----------------------------------------------------------
 
+    def all_paths_with_mtime(self) -> dict[str, float]:
+        """Snapshot of every embedded note's mtime — used for startup reconciliation."""
+        with self._lock:
+            rows = self._conn.execute("SELECT path, mtime FROM notes").fetchall()
+        return {r[0]: r[1] for r in rows}
+
     def get_note(self, path: str) -> dict | None:
         with self._lock:
             row = self._conn.execute(
