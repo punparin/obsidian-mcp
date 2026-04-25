@@ -205,6 +205,77 @@
     display: inline-block; width: 8px; height: 8px; border-radius: 50%;
     margin-right: 4px; vertical-align: middle;
   }
+
+  .glossary { display: flex; flex-direction: column; gap: 4px; }
+  .glossary details {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .glossary details[open] { border-color: var(--accent); }
+  .glossary summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 7px 9px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+  }
+  .glossary summary::-webkit-details-marker { display: none; }
+  .glossary summary::before {
+    content: "▸";
+    font-size: 9px;
+    color: var(--muted);
+    transition: transform 0.15s;
+    display: inline-block;
+  }
+  .glossary details[open] summary::before { transform: rotate(90deg); }
+  .glossary summary:hover { background: rgba(255,255,255,0.03); }
+  .glossary summary code {
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: normal;
+  }
+  .glossary summary .tag-after {
+    margin-left: auto;
+    font-weight: normal;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .glossary .body {
+    padding: 8px 11px 11px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.55;
+    border-top: 1px solid var(--border);
+  }
+  .glossary .body p { margin: 0 0 6px; }
+  .glossary .body p:last-child { margin-bottom: 0; }
+  .glossary .body code {
+    font-family: ui-monospace, monospace;
+    font-size: 10.5px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    color: var(--fg);
+  }
+  .glossary .body .formula {
+    display: block;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 5px 8px;
+    margin: 5px 0;
+    font-family: ui-monospace, monospace;
+    color: var(--fg);
+  }
 </style>
 </head>
 <body>
@@ -232,13 +303,96 @@
       <button class="secondary" data-preset="balanced">balanced</button>
     </div>
 
-    <h2 style="margin-top:18px;">Legend</h2>
-    <div style="font-size:11px;color:var(--muted);line-height:1.7;">
-      <div><span class="swatch" style="background:var(--accent)"></span>cosine similarity (semantic match)</div>
-      <div><span class="swatch" style="background:var(--cyan)"></span>wikilink match — query [[links]] this note</div>
-      <div><span class="swatch" style="background:var(--purple)"></span>tag overlap (Jaccard)</div>
-      <div><span class="swatch" style="background:var(--warn)"></span>graph neighbor (1 or 2 hops)</div>
-      <div><span class="swatch" style="background:var(--pink)"></span>recency (180-day half-life)</div>
+    <h2 style="margin-top:18px;">Glossary</h2>
+    <div class="glossary">
+
+      <details>
+        <summary><span class="swatch" style="background:var(--accent)"></span><code>cos_sim</code><span class="tag-after">cosine similarity</span></summary>
+        <div class="body">
+          <p>How close two embedding vectors point in 384-dimensional space. <code>0</code> = unrelated, <code>1</code> = identical direction. This is the raw semantic match before any graph signal is mixed in.</p>
+          <span class="formula">cos_sim = 1 − cosine_distance</span>
+        </div>
+      </details>
+
+      <details>
+        <summary><code>embedding</code><span class="tag-after">BGE-small, 384-dim</span></summary>
+        <div class="body">
+          <p>A vector representation of text where similar meaning lands at similar vectors. We use <code>BAAI/bge-small-en-v1.5</code>, a local ONNX model (~100MB) — runs on CPU with no API call. Queries and notes share the same vector space, so cosine similarity is meaningful between any pair.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary><code>chunk</code><span class="tag-after">markdown-aware slice</span></summary>
+        <div class="body">
+          <p>A piece of a note we embed independently — typically an H2 or H3 section, packed up to 1600 chars with paragraph overlap. Long notes split into many chunks; tiny sections merge with neighbors. We embed chunks (not whole notes) so retrieval lands on the right paragraph.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary><code>kNN</code> / <code>k</code><span class="tag-after">top-k retrieval</span></summary>
+        <div class="body">
+          <p><b>k-nearest neighbors:</b> the top <code>k</code> chunks closest to the query vector by cosine distance, fetched from <code>sqlite-vec</code>. The <code>k</code> input above sets how many to pull <i>before</i> the graph re-rank narrows down. Internally we kNN at <code>k=50</code> chunks then aggregate to notes.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="swatch" style="background:var(--cyan)"></span><code>wikilink</code><span class="tag-after">[[note-name]]</span></summary>
+        <div class="body">
+          <p>An Obsidian-style link from one note to another, written <code>[[target-note]]</code>. If your query body contains one, the linked note gets a fixed <code>+1.0</code> wikilink_match boost — your hand-curated graph beats marginal semantic noise.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="swatch" style="background:var(--purple)"></span><code>tag_jaccard</code><span class="tag-after">tag overlap</span></summary>
+        <div class="body">
+          <p>How much the query's <code>#tags</code> overlap with the note's tags, measured by <b>Jaccard similarity</b> (set intersection over set union). <code>1.0</code> = identical tag set, <code>0</code> = disjoint. Catches notes that share the same topic taxonomy even when wording differs.</p>
+          <span class="formula">jaccard(A, B) = |A ∩ B| / |A ∪ B|</span>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="swatch" style="background:var(--warn)"></span><code>neighbor_hops</code><span class="tag-after">graph distance</span></summary>
+        <div class="body">
+          <p>Distance through the wikilink graph from a note explicitly mentioned in your query. <code>1-hop</code> = directly linked, <code>2-hop</code> = linked-by-something-linked. We BFS up to 2 hops; further notes get no bonus.</p>
+          <span class="formula">neighbor_bonus = 1 / hops  (1.0 at 1-hop, 0.5 at 2-hop)</span>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="swatch" style="background:var(--pink)"></span><code>recency</code><span class="tag-after">180-day half-life</span></summary>
+        <div class="body">
+          <p>Exponential decay based on the note's modified date — fresher notes get a small lift without dropping older foundational notes off a cliff. Half-life of 180 days means a 6-month-old note gets ~0.5; year-old gets ~0.25.</p>
+          <span class="formula">recency = exp(−age_days / 180)</span>
+        </div>
+      </details>
+
+      <details>
+        <summary><code>contribution</code><span class="tag-after">weighted signal</span></summary>
+        <div class="body">
+          <p>What each signal actually <i>added</i> to the final score after the slider's weight was applied. The horizontal bars on each result card show contributions side-by-side, so you can see whether a note ranked high because of cosine match, wikilinks, tags, or recency.</p>
+          <span class="formula">contribution = weight × raw_signal</span>
+        </div>
+      </details>
+
+      <details>
+        <summary><code>score</code><span class="tag-after">final ranking</span></summary>
+        <div class="body">
+          <p>The sum of all five weighted contributions. This is what sorts the result list, top-down. Notes with similar cosine similarity can land in very different positions once the graph signals are layered in.</p>
+          <span class="formula">final = w_sem · cos_sim
+       + w_link · wikilink_match
+       + w_tag · tag_jaccard
+       + w_neighbor · neighbor_bonus
+       + w_recency · recency</span>
+        </div>
+      </details>
+
+      <details>
+        <summary><code>MCP</code><span class="tag-after">Model Context Protocol</span></summary>
+        <div class="body">
+          <p>The protocol Claude Code uses to talk to external tools (this server, GitHub, Slack, etc.). Servers expose <i>tools</i> and <i>resources</i> over a STDIO or HTTP transport. The Vault Explorer is a <i>sidecar</i> — separate HTTP server, same vault index — so the MCP transport stays narrow.</p>
+        </div>
+      </details>
+
     </div>
   </div>
 
