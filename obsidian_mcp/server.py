@@ -43,6 +43,7 @@ if not vault_path:
     sys.exit(1)
 
 vault = Vault(vault_path)
+vault.start_watching()
 mcp = FastMCP("obsidian")
 
 
@@ -56,9 +57,14 @@ async def read_note(path: str) -> str:
 
 
 @mcp.tool()
-async def write_note(path: str, content: str) -> str:
-    """Create or overwrite a note. Creates parent directories if needed."""
-    return vault.write_note(path, content)
+async def write_note(path: str, content: str, force: bool = False) -> str:
+    """Create or overwrite a note. Creates parent directories if needed.
+
+    Refuses to overwrite if the note changed on disk since the last read_note
+    call (typically because the user edited it in Obsidian). Pass force=True
+    to overwrite anyway.
+    """
+    return vault.write_note(path, content, force=force)
 
 
 @mcp.tool()

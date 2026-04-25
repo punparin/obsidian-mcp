@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, date
+import threading
+from dataclasses import asdict, dataclass, field
+from datetime import date, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from .frontmatter import get_frontmatter, get_body, has_frontmatter
+from .frontmatter import get_body, get_frontmatter, has_frontmatter
 from .links import extract_wikilinks, update_wikilinks_across_vault
+
+if TYPE_CHECKING:
+    from .watcher import VaultWatcher
+
+
+class NoteConflictError(RuntimeError):
+    """Raised when write_note would clobber an edit made since the last read."""
 
 
 @dataclass
@@ -38,6 +47,12 @@ class Vault:
         if not self.root.is_dir():
             raise ValueError(f"Vault path does not exist: {self.root}")
         self._index: dict[str, NoteIndex] | None = None
+        self._index_lock = threading.RLock()
+        # Tracks the disk mtime observed the last time this server handed the
+        # content of a path to the model. Used by write_note to detect that an
+        # external edit (Obsidian, git pull, etc.) happened in the meantime.
+        self._last_read_mtime: dict[str, float] = {}
+        self._watcher: "VaultWatcher" | None = None
 
     # -- Path security --
 
@@ -100,33 +115,106 @@ class Vault:
 
     def rebuild_index(self) -> dict[str, NoteIndex]:
         """Force rebuild the index."""
-        self._index = self._build_index()
-        return self._index
+        with self._index_lock:
+            self._index = self._build_index()
+            return self._index
 
     @property
     def index(self) -> dict[str, NoteIndex]:
         """Lazy-loaded vault index."""
-        if self._index is None:
-            self._index = self._build_index()
-        return self._index
+        with self._index_lock:
+            if self._index is None:
+                self._index = self._build_index()
+            return self._index
+
+    # -- Index mutation hooks (called by MCP tools AND the filesystem watcher) --
+
+    def _reindex_path(self, rel_path: str) -> None:
+        """Re-read a single note from disk and update the index entry.
+
+        Raises FileNotFoundError if the file no longer exists; the caller
+        decides whether to translate that into a forget_path.
+        """
+        if (self.root / rel_path).is_dir():
+            return
+        entry = self._index_single(rel_path)
+        with self._index_lock:
+            # Initialise index lazily if the watcher fires before first access.
+            if self._index is None:
+                self._index = self._build_index()
+            self._index[rel_path] = entry
+
+    def _forget_path(self, rel_path: str) -> None:
+        """Drop a note from the index (deletion or move-source)."""
+        with self._index_lock:
+            if self._index is None:
+                return
+            self._index.pop(rel_path, None)
+            self._last_read_mtime.pop(rel_path, None)
+
+    # -- Watcher lifecycle --
+
+    def start_watching(self) -> "VaultWatcher":
+        """Start a filesystem watcher that keeps the index in sync with
+        out-of-band edits (Obsidian, git, manual CLI). Idempotent."""
+        if self._watcher is not None:
+            return self._watcher
+        from .watcher import VaultWatcher
+
+        # Prime the index before starting the watcher so a burst of initial
+        # on_modified events doesn't race with _build_index.
+        _ = self.index
+        self._watcher = VaultWatcher(self)
+        self._watcher.start()
+        return self._watcher
+
+    def stop_watching(self) -> None:
+        if self._watcher is None:
+            return
+        self._watcher.stop()
+        self._watcher = None
 
     # -- File operations --
 
     def read_note(self, path: str) -> str:
-        """Read note content."""
+        """Read note content. Records mtime for later conflict detection on write."""
         file_path = self._resolve_path(path)
         if not file_path.exists():
             raise FileNotFoundError(f"Note not found: {path}")
-        return file_path.read_text(encoding="utf-8")
+        content = file_path.read_text(encoding="utf-8")
+        rel = self._to_relative(file_path)
+        self._last_read_mtime[rel] = file_path.stat().st_mtime
+        return content
 
-    def write_note(self, path: str, content: str) -> str:
-        """Create or overwrite a note."""
+    def write_note(self, path: str, content: str, force: bool = False) -> str:
+        """Create or overwrite a note.
+
+        If the file already exists on disk and has been modified since this
+        server last handed its contents to the model via read_note(), the
+        write is refused with NoteConflictError — typically because the user
+        edited the note in Obsidian in the meantime. Pass force=True to
+        override.
+        """
         file_path = self._resolve_path(path)
+        rel = self._to_relative(file_path)
+
+        if file_path.exists() and not force:
+            disk_mtime = file_path.stat().st_mtime
+            last_seen = self._last_read_mtime.get(rel)
+            # Only check if we have a baseline — a fresh write without any
+            # prior read (e.g. create_note_from_template) is allowed.
+            if last_seen is not None and disk_mtime > last_seen:
+                raise NoteConflictError(
+                    f"Note changed on disk since last read: {path}. "
+                    f"Re-read the note to see the current content, or pass force=True to overwrite."
+                )
+
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(content, encoding="utf-8")
-        # Update index
-        rel = self._to_relative(file_path)
-        self.index[rel] = self._index_single(rel)
+        # Update index and mtime baseline
+        self._last_read_mtime[rel] = file_path.stat().st_mtime
+        with self._index_lock:
+            self.index[rel] = self._index_single(rel)
         return f"Written: {path}"
 
     def append_note(self, path: str, content: str) -> str:
@@ -139,7 +227,9 @@ class Vault:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text(content, encoding="utf-8")
         rel = self._to_relative(file_path)
-        self.index[rel] = self._index_single(rel)
+        self._last_read_mtime[rel] = file_path.stat().st_mtime
+        with self._index_lock:
+            self.index[rel] = self._index_single(rel)
         return f"Appended: {path}"
 
     def list_notes(self, folder: str = "") -> list[str]:
@@ -156,7 +246,7 @@ class Vault:
             raise FileNotFoundError(f"Note not found: {path}")
         file_path.unlink()
         rel = self._to_relative(file_path)
-        self.index.pop(rel, None)
+        self._forget_path(rel)
         return f"Deleted: {path}"
 
     def move_note(self, src: str, dest: str) -> str:
@@ -177,16 +267,18 @@ class Vault:
 
         # Update index
         old_rel = self._to_relative(src_path)
-        self.index.pop(old_rel, None)
         new_rel = self._to_relative(dest_path)
-        self.index[new_rel] = self._index_single(new_rel)
+        self._forget_path(old_rel)
+        with self._index_lock:
+            self.index[new_rel] = self._index_single(new_rel)
 
         # Update wikilinks across vault
         updated = update_wikilinks_across_vault(self.root, old_stem, new_stem, self.index)
 
         # Re-index updated files
-        for p in updated:
-            self.index[p] = self._index_single(p)
+        with self._index_lock:
+            for p in updated:
+                self.index[p] = self._index_single(p)
 
         return f"Moved: {src} -> {dest} (updated {len(updated)} linking notes)"
 

@@ -19,6 +19,9 @@ OBSIDIAN_VAULT_PATH=/path/to/vault .venv/bin/python -m obsidian_mcp.server
 - `obsidian_mcp/frontmatter.py` — YAML frontmatter parsing/updating
 - `obsidian_mcp/links.py` — Wikilink extraction, backlinks, graph
 - `obsidian_mcp/templates.py` — Template expansion with {{variables}}
+- `obsidian_mcp/watcher.py` — `watchdog`-based filesystem watcher that
+  keeps the Vault index in sync with out-of-band edits and underpins
+  write-conflict detection in `Vault.write_note`.
 
 ## Key Conventions
 - All paths are relative to vault root
