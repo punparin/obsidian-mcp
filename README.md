@@ -168,6 +168,13 @@ Set the vault path via environment variable:
 export OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
 ```
 
+## Using With Claude Code
+
+See [`docs/using-with-claude-code.md`](docs/using-with-claude-code.md)
+for rules on tool choice (semantic vs exact), writing flow, ingest
+flow, interpreting score signals, and a ready-to-paste block for your
+`CLAUDE.md`.
+
 ## Semantic Retrieval (v0.3)
 
 Local-first semantic search over your vault, using your hand-curated graph
