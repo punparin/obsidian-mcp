@@ -165,6 +165,22 @@ Set the vault path via environment variable:
 export OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
 ```
 
+## Live Vault Sync
+
+The server keeps its in-memory index in sync with the vault via a
+filesystem watcher (backed by `watchdog`). Edits you make directly in
+Obsidian — or any other tool — are reflected in the next MCP query
+without restarting the server.
+
+The watcher also backs **conflict detection on writes**: if a note
+changed on disk between Claude's last `read_note` and its next
+`write_note` on the same path, the write is refused with a
+`NoteConflictError` so you don't clobber an edit made in Obsidian. Pass
+`force=true` to override intentionally.
+
+Directories like `.obsidian/`, `.git/`, `.trash/`, and non-markdown
+files are ignored by the watcher.
+
 ## Frontmatter Convention
 
 For best results, standardize your notes with YAML frontmatter:

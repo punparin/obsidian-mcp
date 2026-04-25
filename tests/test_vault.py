@@ -1,5 +1,9 @@
+import os
+import time
+
 import pytest
-from obsidian_mcp.vault import Vault
+
+from obsidian_mcp.vault import NoteConflictError
 
 
 class TestPathSecurity:
@@ -35,6 +39,46 @@ class TestWriteNote:
     def test_overwrites_existing(self, vault):
         vault.write_note("note1.md", "Overwritten")
         assert vault.read_note("note1.md") == "Overwritten"
+
+
+class TestWriteConflictDetection:
+    def _bump_mtime(self, path, seconds=2.0):
+        """Force file mtime forward; fs resolution is sometimes coarse."""
+        now = time.time() + seconds
+        os.utime(path, (now, now))
+
+    def test_create_without_prior_read_allowed(self, vault, tmp_vault):
+        # Brand-new file, no last_read baseline — must succeed.
+        vault.write_note("new.md", "content")
+        assert (tmp_vault / "new.md").exists()
+
+    def test_write_after_own_read_allowed(self, vault):
+        vault.read_note("note1.md")
+        vault.write_note("note1.md", "rewritten")
+        assert vault.read_note("note1.md") == "rewritten"
+
+    def test_external_edit_after_read_blocks_write(self, vault, tmp_vault):
+        vault.read_note("note1.md")
+        # Simulate an Obsidian edit: content changes + mtime advances.
+        (tmp_vault / "note1.md").write_text("EXTERNALLY EDITED")
+        self._bump_mtime(tmp_vault / "note1.md")
+        with pytest.raises(NoteConflictError, match="changed on disk"):
+            vault.write_note("note1.md", "MCP overwrite")
+        # Disk content is untouched.
+        assert (tmp_vault / "note1.md").read_text() == "EXTERNALLY EDITED"
+
+    def test_force_bypasses_conflict(self, vault, tmp_vault):
+        vault.read_note("note1.md")
+        (tmp_vault / "note1.md").write_text("EXTERNALLY EDITED")
+        self._bump_mtime(tmp_vault / "note1.md")
+        vault.write_note("note1.md", "MCP overwrite", force=True)
+        assert (tmp_vault / "note1.md").read_text() == "MCP overwrite"
+
+    def test_write_without_prior_read_to_existing_allowed(self, vault):
+        # No read happened in this server lifetime — nothing to compare against,
+        # so we don't want to block the write (Claude may create-via-template etc.).
+        vault.write_note("note1.md", "fresh content")
+        assert vault.read_note("note1.md") == "fresh content"
 
 
 class TestAppendNote:
