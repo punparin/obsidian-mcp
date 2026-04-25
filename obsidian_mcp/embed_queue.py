@@ -106,6 +106,14 @@ class EmbedQueue:
         """Block until the queue has drained — useful for tests."""
         return self._idle_event.wait(timeout)
 
+    def pending_count(self) -> int:
+        """Number of paths currently waiting on debounce or in-flight."""
+        return len(self._pending)
+
+    def is_idle(self) -> bool:
+        """True when no paths are pending and the worker is between batches."""
+        return self._idle_event.is_set()
+
     # -- Worker --------------------------------------------------------
 
     def _run(self) -> None:

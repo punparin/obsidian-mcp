@@ -338,9 +338,16 @@ async def rebuild_embeddings() -> str:
 
 
 @mcp.tool()
-async def embedding_stats() -> str:
-    """Inspect the embedding index (note count, chunk count, model, db path)."""
-    return json.dumps(vault.embedding_stats(), indent=2, default=str)
+async def embedding_stats(wait: bool = False) -> str:
+    """Inspect the embedding index (note count, chunk count, model, db path).
+
+    Edits are embedded asynchronously with a 200ms debounce, so the raw
+    counts can briefly trail recent writes. The response includes
+    ``queue_pending`` (paths still in flight) and ``queue_idle`` (true
+    when fully caught up). Pass ``wait=true`` to block until the queue
+    drains so the returned counts reflect the latest edits.
+    """
+    return json.dumps(vault.embedding_stats(wait=wait), indent=2, default=str)
 
 
 # ── Resources ──────────────────────────────────────────────────────────

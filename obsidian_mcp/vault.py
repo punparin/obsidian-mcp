@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
 from dataclasses import asdict, dataclass, field
@@ -11,6 +12,8 @@ from typing import TYPE_CHECKING
 
 from .frontmatter import get_body, get_frontmatter, has_frontmatter
 from .links import extract_wikilinks, update_wikilinks_across_vault
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .embed_queue import EmbedQueue
@@ -221,7 +224,43 @@ class Vault:
         self._embedder = backend
         self._vector_store = store
         self._embed_queue = q
+        # Reconcile drift since last shutdown: external edits, deletions, and
+        # fresh installs all converge here. Cheap (one stat per note) and the
+        # actual embedding runs on the background queue.
+        self._reconcile_with_store()
         return True
+
+    def _reconcile_with_store(self) -> dict:
+        """Diff vector store against current vault state.
+
+        Notes added or modified while the MCP was offline get re-enqueued;
+        notes deleted while offline get forgotten. The body_hash short-circuit
+        in the worker skips no-op re-embeds. Idempotent.
+        """
+        if self._vector_store is None:
+            return {"enqueued": 0, "forgotten": 0}
+        stored = self._vector_store.all_paths_with_mtime()
+        current = self.index
+        enqueued = 0
+        forgotten = 0
+        for rel_path in current:
+            try:
+                disk_mtime = (self.root / rel_path).stat().st_mtime
+            except OSError:
+                continue
+            prev = stored.get(rel_path)
+            if prev is None or prev < disk_mtime:
+                self._enqueue_embed(rel_path)
+                enqueued += 1
+        for rel_path in stored:
+            if rel_path not in current:
+                self._embed_forget(rel_path)
+                forgotten += 1
+        if enqueued or forgotten:
+            logger.info(
+                "semantic reconcile: enqueued=%d forgotten=%d", enqueued, forgotten
+            )
+        return {"enqueued": enqueued, "forgotten": forgotten}
 
     def disable_semantic(self) -> None:
         if self._embed_queue is not None:
@@ -258,10 +297,26 @@ class Vault:
         assert self._vector_store is not None
         return {"enabled": True, "requested": total, **self._vector_store.stats()}
 
-    def embedding_stats(self) -> dict:
+    def embedding_stats(self, wait: bool = False, timeout: float = 5.0) -> dict:
+        """Return current index stats plus background-queue status.
+
+        ``queue_pending`` and ``queue_idle`` let callers see when the
+        store is still catching up to the vault — without them, a stats
+        call right after an edit can look stale.
+
+        Pass ``wait=True`` to block until the queue drains (or
+        ``timeout`` elapses) before sampling, so the returned counts
+        reflect the latest edits.
+        """
         if self._vector_store is None:
             return {"enabled": False}
-        return {"enabled": True, **self._vector_store.stats()}
+        if wait and self._embed_queue is not None:
+            self._embed_queue.wait_idle(timeout=timeout)
+        out = {"enabled": True, **self._vector_store.stats()}
+        if self._embed_queue is not None:
+            out["queue_pending"] = self._embed_queue.pending_count()
+            out["queue_idle"] = self._embed_queue.is_idle()
+        return out
 
     def semantic_search(self, query: str, k: int = 10) -> list[dict]:
         """Vault-facing facade used by the MCP tool; empty list if disabled."""
