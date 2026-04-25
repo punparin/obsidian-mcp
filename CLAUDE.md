@@ -22,6 +22,17 @@ OBSIDIAN_VAULT_PATH=/path/to/vault .venv/bin/python -m obsidian_mcp.server
 - `obsidian_mcp/watcher.py` — `watchdog`-based filesystem watcher that
   keeps the Vault index in sync with out-of-band edits and underpins
   write-conflict detection in `Vault.write_note`.
+- `obsidian_mcp/chunker.py` — markdown-aware splitter (H2/H3 sections,
+  paragraph packing) for semantic retrieval.
+- `obsidian_mcp/embeddings.py` — backend abstraction (`FastEmbedBackend`
+  default, `FakeBackend` for tests), selected via `OBSIDIAN_EMBEDDER`.
+- `obsidian_mcp/vector_store.py` — chunk-level SQLite + `sqlite-vec`
+  store under `<vault>/.obsidian-mcp/index.db`.
+- `obsidian_mcp/semantic.py` — query pipeline: embed → kNN → graph re-rank
+  (cos_sim + wikilink + tag_jaccard + neighbor_hops + recency).
+- `obsidian_mcp/embed_queue.py` — background debounced worker that
+  coalesces rapid edits and re-embeds changed chunks only (body_hash
+  short-circuit).
 
 ## Key Conventions
 - All paths are relative to vault root

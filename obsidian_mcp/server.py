@@ -44,6 +44,13 @@ if not vault_path:
 
 vault = Vault(vault_path)
 vault.start_watching()
+try:
+    if vault.enable_semantic():
+        logger.info("semantic retrieval enabled")
+    else:
+        logger.info("semantic retrieval disabled (OBSIDIAN_EMBEDDER=none)")
+except Exception:
+    logger.exception("failed to enable semantic retrieval; continuing without it")
 mcp = FastMCP("obsidian")
 
 
@@ -301,6 +308,39 @@ async def find_related_notes(content: str, limit: int = 10) -> str:
 async def archive_inbox_note(path: str) -> str:
     """Move a processed note from inbox/ to archive/YYYY-MM/. Use after ingesting its content into the wiki."""
     return _archive_inbox(vault, path)
+
+
+# ── Semantic Retrieval ────────────────────────────────────────────────
+
+
+@mcp.tool()
+async def semantic_search(query: str, k: int = 10) -> str:
+    """Embedding-based search with graph-aware re-rank.
+
+    Returns ranked notes with score breakdown (cos_sim, wikilink match,
+    tag overlap, neighbor distance, recency). Use this when the user's
+    intent is semantic ("what notes are about X?") rather than an exact
+    string lookup — for exact matches, use `search`.
+    """
+    if not vault.semantic_enabled:
+        return "Semantic retrieval disabled (set OBSIDIAN_EMBEDDER to enable)."
+    results = vault.semantic_search(query, k=k)
+    if not results:
+        return "No results."
+    return json.dumps(results, indent=2, default=str)
+
+
+@mcp.tool()
+async def rebuild_embeddings() -> str:
+    """Re-embed every note in the vault. Safe to run anytime; idempotent."""
+    result = vault.rebuild_embeddings()
+    return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
+async def embedding_stats() -> str:
+    """Inspect the embedding index (note count, chunk count, model, db path)."""
+    return json.dumps(vault.embedding_stats(), indent=2, default=str)
 
 
 # ── Resources ──────────────────────────────────────────────────────────
