@@ -7,26 +7,43 @@ import sys
 
 from fastmcp import FastMCP
 
-from .vault import Vault
-from .frontmatter import get_frontmatter as _get_fm, update_frontmatter as _update_fm
-from .links import get_backlinks as _backlinks, get_graph as _graph, extract_wikilinks as _wikilinks
-from .templates import create_from_template as _from_template
+from .frontmatter import get_frontmatter as _get_fm
+from .frontmatter import update_frontmatter as _update_fm
+from .ingest import (
+    archive_inbox_note as _archive_inbox,
+)
+from .ingest import (
+    find_related_notes as _find_related,
+)
+from .ingest import (
+    list_inbox as _list_inbox,
+)
+from .links import extract_wikilinks as _wikilinks
+from .links import get_backlinks as _backlinks
+from .links import get_graph as _graph
 from .lint import (
     find_broken_wikilinks as _broken_wikilinks,
-    find_stale_notes as _stale_notes,
+)
+from .lint import (
     find_duplicate_titles as _duplicate_titles,
+)
+from .lint import (
+    find_stale_notes as _stale_notes,
+)
+from .lint import (
     lint_vault as _lint_vault,
 )
 from .schema import (
     get_schema as _get_schema,
+)
+from .schema import (
     validate_note_schema as _validate_note,
+)
+from .schema import (
     validate_vault_schema as _validate_vault,
 )
-from .ingest import (
-    list_inbox as _list_inbox,
-    find_related_notes as _find_related,
-    archive_inbox_note as _archive_inbox,
-)
+from .templates import create_from_template as _from_template
+from .vault import Vault
 
 # Logging to stderr (STDIO transport requirement)
 logging.basicConfig(

@@ -17,6 +17,7 @@ dev = [
     "pytest>=9.0",
     "pytest-asyncio>=0.25",
     "ruff>=0.5",
+    "pre-commit>=3.7",
 ]
 explorer = [
     "fastapi>=0.115",

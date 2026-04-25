@@ -1,4 +1,5 @@
 import pytest
+
 from obsidian_mcp.vault import Vault
 
 

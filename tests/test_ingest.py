@@ -1,6 +1,6 @@
 import pytest
 
-from obsidian_mcp.ingest import list_inbox, find_related_notes, archive_inbox_note
+from obsidian_mcp.ingest import archive_inbox_note, find_related_notes, list_inbox
 
 
 class TestListInbox:
