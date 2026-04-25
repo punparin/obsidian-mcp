@@ -416,4 +416,10 @@ no server restart needed.
 - `GET /api/graph` — Cytoscape-friendly `{nodes, edges}` of the vault
   wikilink graph
 - `GET /api/note?path=...` — full note content + frontmatter
+- `GET /api/suggestions?min_score=&limit=&path=` — auto-link suggestions
+  (note pairs that look related but aren't wikilinked)
+- `POST /api/suggestions/apply` — body `{source, target}` → appends
+  `See also: [[target]]` to the source (idempotent)
+- `POST /api/suggestions/dismiss` — body `{source, target}` → hides the
+  pair from future scans (persistent)
 

@@ -24,6 +24,10 @@ setup) so Claude picks them up on every session.
 - The ingest flow is `list_inbox` → `read_note` → `find_related_notes`
   → update related notes → `archive_inbox_note`. Don't delete inbox
   notes; archive them so the source stays recoverable.
+- `suggest_links` finds note pairs that look related but aren't
+  wikilinked. Use `apply_link_suggestion(source, target)` to add a
+  `See also: [[target]]` (idempotent), or `dismiss_link_suggestion` to
+  hide a pair permanently. Don't bulk-apply — review each one.
 ```
 
 ## When to use each tool
@@ -38,6 +42,7 @@ setup) so Claude picks them up on every session.
 | "Written after Mar 1, 2026" | `search_by_date_range` | Structured date filter. |
 | Frontmatter property | `search_by_frontmatter` | Structured property match. |
 | "This inbox item relates to which of my notes?" | `find_related_notes` | Uses semantic + your graph (wikilinks, tags). Better than raw `semantic_search` when you have a full block of source content. |
+| "What notes should be linked but aren't?" | `suggest_links` | Pair-level scan; surfaces edges missing from your graph based on semantic + tag overlap. Apply with `apply_link_suggestion` or hide with `dismiss_link_suggestion`. |
 
 Rule of thumb: if the user quoted something literally, use `search`.
 If they're describing a concept, use `semantic_search`. If there's a
@@ -80,6 +85,33 @@ for each item:
 
 Don't `delete_note` on inbox items after processing — archiving keeps
 the source recoverable and the audit trail intact.
+
+### Auto-link suggestion flow
+
+```
+suggest_links(min_score=0.55, limit=25)
+  ↓
+for each suggestion:
+    read both notes  ← decide if the link makes sense
+    apply_link_suggestion(source, target)   ← appends "See also: [[target]]"
+    OR
+    dismiss_link_suggestion(source, target) ← hides it forever
+```
+
+Rules of thumb:
+
+- Default threshold is 0.55 — that's a solid baseline. Drop to ~0.4
+  for an exploratory sweep, raise to ~0.7 if you only want
+  high-confidence pairs.
+- `apply_link_suggestion` is idempotent (it checks the resolved-link
+  graph, not just substring), so re-applying is a safe no-op. The
+  link is added as a `See also` line at the end of the source.
+- Dismissals persist in `index.db` and survive server restarts. If
+  you change your mind, the same pair won't reappear unless you
+  re-enable it (no MCP tool for that yet — clear from
+  `dismissed_link_suggestions` directly if needed).
+- Suggestions are deduped by canonical pair, so applying or
+  dismissing one direction handles both.
 
 ## Interpreting `semantic_search` results
 
