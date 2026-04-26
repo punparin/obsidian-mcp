@@ -233,19 +233,22 @@ larger vaults. Two backends are available:
 
 ```bash
 OBSIDIAN_EMBEDDER=ollama
-OBSIDIAN_EMBEDDER_MODEL=mxbai-embed-large   # or nomic-embed-text, bge-m3, ...
-OLLAMA_URL=http://desktop.local:11434       # default http://localhost:11434
+OBSIDIAN_EMBEDDER_MODEL=qwen3-embedding:8b   # or :4b, bge-m3, mxbai-embed-large, ...
+OLLAMA_URL=http://desktop.local:11434        # default http://localhost:11434
 ```
 
-**Recommended models** (descending quality, all available via Ollama):
+**Recommended models** (descending quality, all via Ollama unless noted):
 
 | Model | Dim | Notes |
 |---|---|---|
-| `mxbai-embed-large` | 1024 | Top open model on MTEB; best for English-heavy vaults on a beefy host |
-| `bge-m3` | 1024 | Multilingual (100+ langs incl. Thai/Chinese/Japanese), long context |
-| `nomic-embed-text` | 768 | Beats OpenAI ada-002, 8k context, balanced quality/speed |
-| `snowflake-arctic-embed-m` | 768 | Fast, punches above its weight |
+| `qwen3-embedding:8b` | 4096 | **Recommended.** SOTA on MTEB, strong multilingual (Thai/Chinese/Japanese). ~16KB per vector — heaviest, but best quality |
+| `qwen3-embedding:4b` | 2560 | Sweet spot: close to 8B quality at ~⅔ storage and noticeably faster |
+| `bge-m3` | 1024 | Lightweight multilingual fallback, long context (8k) |
+| `mxbai-embed-large` | 1024 | Strong English-only option; older but well-supported |
+| `nomic-embed-text` | 768 | Balanced quality/speed; 8k context |
 | `BAAI/bge-small-en-v1.5` | 384 | Default fastembed model — Pi-friendly, English only |
+
+Rankings shift fast — cross-check the [MTEB leaderboard](https://huggingface.co/spaces/mteb/leaderboard) before committing to a model for a large vault. Larger dim = better recall but more disk + slower kNN.
 
 **Switching is safe:** the vector store records the active model and
 dim. On startup, if either has changed, the index is cleared and the
