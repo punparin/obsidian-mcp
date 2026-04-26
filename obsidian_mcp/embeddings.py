@@ -60,7 +60,17 @@ class FastEmbedBackend(EmbeddingBackend):
     def _ensure_model(self) -> None:
         if self._model is not None:
             return
-        from fastembed import TextEmbedding
+        try:
+            from fastembed import TextEmbedding
+        except ImportError as e:
+            raise RuntimeError(
+                "fastembed is not installed. The Docker image and the base "
+                "install no longer ship it. Either:\n"
+                "  - install the extra: pip install \".[fastembed]\"\n"
+                "  - use the remote backend: OBSIDIAN_EMBEDDER=ollama with "
+                "OBSIDIAN_EMBEDDER_MODEL + OLLAMA_URL\n"
+                "  - disable semantic features: OBSIDIAN_EMBEDDER=none"
+            ) from e
 
         logger.info("loading embedder model %s (first call may download)", self.model_id)
         self._model = TextEmbedding(model_name=self.model_id)

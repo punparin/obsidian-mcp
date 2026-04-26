@@ -1,12 +1,15 @@
 """Tests for embedding backends and the get_backend() factory.
 
-These don't exercise FastEmbedBackend (it would download a 100MB model
-on first use); the FakeBackend covers determinism, and OllamaBackend
-is tested with a stubbed urlopen so we never need a live Ollama server.
+These don't exercise the real FastEmbedBackend model load (it would
+download a 100MB model on first use); the FakeBackend covers determinism,
+and OllamaBackend is tested with a stubbed urlopen so we never need a
+live Ollama server. We do verify that ``FastEmbedBackend`` raises a
+helpful error when the optional extra is missing.
 """
 
 from __future__ import annotations
 
+import builtins
 import io
 import json
 from unittest.mock import patch
@@ -16,6 +19,7 @@ import pytest
 from obsidian_mcp import embeddings as emb
 from obsidian_mcp.embeddings import (
     FakeBackend,
+    FastEmbedBackend,
     OllamaBackend,
     batched,
     get_backend,
@@ -34,6 +38,25 @@ def _stub_response(payload: dict) -> io.BytesIO:
             return False
 
     return _Resp(body)
+
+
+class TestFastEmbedBackend:
+    def test_friendly_error_when_fastembed_missing(self, monkeypatch):
+        """Missing optional extra surfaces a clear hint, not a bare ImportError.
+        The error fires on first embed (during the warmup call in
+        ``Vault.start_embedding_pipeline``) — early enough for users to spot."""
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "fastembed":
+                raise ImportError("No module named 'fastembed'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+        backend = FastEmbedBackend()
+        with pytest.raises(RuntimeError, match=r"fastembed is not installed"):
+            backend.embed(["x"])
 
 
 class TestFakeBackend:
