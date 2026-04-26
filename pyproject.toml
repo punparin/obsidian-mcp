@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-mcp"
-version = "0.5.0"
+version = "0.6.0"
 description = "MCP server for Obsidian vault operations"
 requires-python = ">=3.11"
 dependencies = [
