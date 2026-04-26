@@ -216,6 +216,42 @@ bias is deliberate. Tune via `OBSIDIAN_W_SEM`, `OBSIDIAN_W_LINK`,
 **Disabling:** set `OBSIDIAN_EMBEDDER=none` to skip all of this; the three
 new tools will no-op and `find_related_notes` falls back to lexical.
 
+### Embedding model selection
+
+The default (`BAAI/bge-small-en-v1.5`, 384-dim, English-only) is a good
+fit for low-power hosts but underperforms on multilingual notes and
+larger vaults. Two backends are available:
+
+| `OBSIDIAN_EMBEDDER` | Where it runs | When to use |
+|---|---|---|
+| `fastembed` (default) | In-process, downloads ONNX model | Pi local, single-host, English vault |
+| `ollama` | HTTP to a remote [Ollama](https://ollama.com) server | Better models without taxing the MCP host (e.g. Pi-bound MCP → desktop Ollama) |
+| `fake` | Deterministic stub | Tests only |
+| `none` | — | Disable semantic features entirely |
+
+**Env vars:**
+
+```bash
+OBSIDIAN_EMBEDDER=ollama
+OBSIDIAN_EMBEDDER_MODEL=mxbai-embed-large   # or nomic-embed-text, bge-m3, ...
+OLLAMA_URL=http://desktop.local:11434       # default http://localhost:11434
+```
+
+**Recommended models** (descending quality, all available via Ollama):
+
+| Model | Dim | Notes |
+|---|---|---|
+| `mxbai-embed-large` | 1024 | Top open model on MTEB; best for English-heavy vaults on a beefy host |
+| `bge-m3` | 1024 | Multilingual (100+ langs incl. Thai/Chinese/Japanese), long context |
+| `nomic-embed-text` | 768 | Beats OpenAI ada-002, 8k context, balanced quality/speed |
+| `snowflake-arctic-embed-m` | 768 | Fast, punches above its weight |
+| `BAAI/bge-small-en-v1.5` | 384 | Default fastembed model — Pi-friendly, English only |
+
+**Switching is safe:** the vector store records the active model and
+dim. On startup, if either has changed, the index is cleared and the
+reconcile loop re-embeds every note in the background. Expect a few
+minutes of degraded search quality after a switch on large vaults.
+
 ## Auto-Link Suggestions (v0.5)
 
 Find pairs of notes that look related but aren't wikilinked yet — and

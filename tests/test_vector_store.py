@@ -124,6 +124,60 @@ class TestKnn:
         assert len(hits) == 3
 
 
+class TestModelChangeReset:
+    """Switching embedding model or dim should auto-clear the index so the
+    reconcile loop re-embeds every note. Dismissed link suggestions must
+    survive since they're tied to wikilinks, not embeddings."""
+
+    def test_same_model_keeps_data(self, tmp_path):
+        b = FakeBackend(dim=32)
+        s = VectorStore(tmp_path / "idx.db", dim=b.dim, model_id=b.model_id)
+        chunks = [_ch("alpha")]
+        s.replace_chunks("a.md", 1.0, "h1", chunks, _embed_chunks(b, chunks))
+        s.close()
+
+        s2 = VectorStore(tmp_path / "idx.db", dim=b.dim, model_id=b.model_id)
+        assert s2.get_note("a.md") is not None
+        assert s2.stats()["chunks"] == 1
+        s2.close()
+
+    def test_model_change_clears_index(self, tmp_path):
+        old = FakeBackend(dim=32)
+        s = VectorStore(tmp_path / "idx.db", dim=old.dim, model_id=old.model_id)
+        chunks = [_ch("alpha"), _ch("beta")]
+        s.replace_chunks("a.md", 1.0, "h1", chunks, _embed_chunks(old, chunks))
+        # Pre-existing dismissal we expect to survive the reset.
+        s.dismiss_pair("note-a.md", "note-b.md")
+        s.close()
+
+        # Re-open with a different model id (same dim).
+        s2 = VectorStore(tmp_path / "idx.db", dim=32, model_id="other-model")
+        stats = s2.stats()
+        assert stats["notes"] == 0
+        assert stats["chunks"] == 0
+        # Dismissals are about wikilinks, not embeddings — they survive.
+        assert s2.get_all_dismissed() == {("note-a.md", "note-b.md")}
+        s2.close()
+
+    def test_dim_change_drops_vec_table_and_reindexes(self, tmp_path):
+        small = FakeBackend(dim=16)
+        s = VectorStore(tmp_path / "idx.db", dim=small.dim, model_id=small.model_id)
+        chunks = [_ch("alpha")]
+        s.replace_chunks("a.md", 1.0, "h1", chunks, _embed_chunks(small, chunks))
+        s.close()
+
+        # Same model id, but the dim changed — vec table must be rebuilt.
+        big = FakeBackend(dim=64)
+        # Force same model_id via direct init to isolate dim-only mismatch.
+        s2 = VectorStore(tmp_path / "idx.db", dim=big.dim, model_id=small.model_id)
+        assert s2.stats()["notes"] == 0
+        # New inserts at the new dim succeed.
+        new_chunks = [_ch("beta")]
+        s2.replace_chunks("b.md", 2.0, "h2", new_chunks, _embed_chunks(big, new_chunks))
+        assert s2.stats()["dim"] == 64
+        s2.close()
+
+
 class TestStats:
     def test_empty_store(self, store):
         s, _ = store

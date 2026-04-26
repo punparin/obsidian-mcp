@@ -25,7 +25,10 @@ OBSIDIAN_VAULT_PATH=/path/to/vault .venv/bin/python -m obsidian_mcp.server
 - `obsidian_mcp/chunker.py` — markdown-aware splitter (H2/H3 sections,
   paragraph packing) for semantic retrieval.
 - `obsidian_mcp/embeddings.py` — backend abstraction (`FastEmbedBackend`
-  default, `FakeBackend` for tests), selected via `OBSIDIAN_EMBEDDER`.
+  default, `OllamaBackend` for remote inference, `FakeBackend` for
+  tests), selected via `OBSIDIAN_EMBEDDER` (`fastembed` | `ollama` |
+  `fake` | `none`). Ollama also reads `OBSIDIAN_EMBEDDER_MODEL` and
+  `OLLAMA_URL`. Switching models auto-clears the index on next start.
 - `obsidian_mcp/vector_store.py` — chunk-level SQLite + `sqlite-vec`
   store under `<vault>/.obsidian-mcp/index.db`.
 - `obsidian_mcp/semantic.py` — query pipeline: embed → kNN → graph re-rank
