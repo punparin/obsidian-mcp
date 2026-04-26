@@ -9,7 +9,10 @@ COPY obsidian_mcp/ obsidian_mcp/
 COPY pyproject.toml .
 RUN pip install --no-cache-dir -e ".[explorer]"
 
+# Explorer image follows the same no-fastembed policy as the MCP image —
+# semantic features rely on a remote Ollama server.
 ENV OBSIDIAN_VAULT_PATH=/vault
+ENV OBSIDIAN_EMBEDDER=ollama
 EXPOSE 8765
 
 ENTRYPOINT ["python", "-m", "obsidian_mcp.explorer", "--host", "0.0.0.0", "--port", "8765"]

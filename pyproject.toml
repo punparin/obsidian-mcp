@@ -8,16 +8,19 @@ dependencies = [
     "python-frontmatter>=1.1.0",
     "pyyaml>=6.0",
     "watchdog>=4.0",
-    "fastembed>=0.3",
     "sqlite-vec>=0.1",
 ]
 
 [project.optional-dependencies]
+fastembed = [
+    "fastembed>=0.3",
+]
 dev = [
     "pytest>=9.0",
     "pytest-asyncio>=0.25",
     "ruff>=0.5",
     "pre-commit>=3.7",
+    "fastembed>=0.3",
 ]
 explorer = [
     "fastapi>=0.115",

@@ -139,18 +139,35 @@ docker build -t obsidian-mcp .
 git clone https://github.com/punparin/obsidian-mcp.git
 cd obsidian-mcp
 python3 -m venv .venv
-.venv/bin/pip install -e .
+# Pick an embedding setup — see "Embedding model selection" below.
+.venv/bin/pip install -e ".[fastembed]"   # in-process model (~130MB download on first use)
+# OR
+.venv/bin/pip install -e .                # base only — semantic features require Ollama (see below)
 ```
+
+> **Heads up (v0.7+):** `fastembed` is no longer in base deps. The Docker
+> image and the bare `pip install -e .` ship without it; semantic
+> features then expect a remote Ollama server. This shrinks the Docker
+> image by ~130MB and removes any chance of an unexpected model download
+> at runtime.
 
 ## Register with Claude Code
 
 ### Docker
 
+The image defaults to `OBSIDIAN_EMBEDDER=ollama` and contains no embedding
+model — point it at an Ollama server you already run (e.g. on a desktop)
+or set `OBSIDIAN_EMBEDDER=none` to skip semantic features entirely.
+
 ```bash
 claude mcp add \
   -s user \
   obsidian \
-  -- docker run -i --rm -v /path/to/your/vault:/vault ghcr.io/punparin/obsidian-mcp:latest
+  -- docker run -i --rm \
+       -v /path/to/your/vault:/vault \
+       -e OBSIDIAN_EMBEDDER_MODEL=qwen3-embedding:8b \
+       -e OLLAMA_URL=http://desktop.local:11434 \
+       ghcr.io/punparin/obsidian-mcp:latest
 ```
 
 ### Local
@@ -186,8 +203,9 @@ Local-first semantic search over your vault, using your hand-curated graph
 **How it works:**
 1. On server start, each note's body is split into markdown-aware chunks
    (H2/H3 sections, packed to ≤1600 chars with paragraph overlap).
-2. Each chunk is embedded with [`fastembed`](https://github.com/qdrant/fastembed)
-   using `BAAI/bge-small-en-v1.5` (ONNX, local, ~100MB download on first run).
+2. Each chunk is embedded — either by a remote [Ollama](https://ollama.com)
+   server (default in Docker) or by an in-process [`fastembed`](https://github.com/qdrant/fastembed)
+   model (opt-in extra). See *Embedding model selection* below.
 3. Vectors live in `<vault>/.obsidian-mcp/index.db` (SQLite + `sqlite-vec`).
 4. On query: embed the query → top-K chunks via cosine distance →
    aggregate to notes → re-rank with graph signals.
@@ -218,14 +236,12 @@ new tools will no-op and `find_related_notes` falls back to lexical.
 
 ### Embedding model selection
 
-The default (`BAAI/bge-small-en-v1.5`, 384-dim, English-only) is a good
-fit for low-power hosts but underperforms on multilingual notes and
-larger vaults. Two backends are available:
+Two backends are available; pick one with `OBSIDIAN_EMBEDDER`:
 
 | `OBSIDIAN_EMBEDDER` | Where it runs | When to use |
 |---|---|---|
-| `fastembed` (default) | In-process, downloads ONNX model | Pi local, single-host, English vault |
-| `ollama` | HTTP to a remote [Ollama](https://ollama.com) server | Better models without taxing the MCP host (e.g. Pi-bound MCP → desktop Ollama) |
+| `ollama` (Docker default) | HTTP to a remote [Ollama](https://ollama.com) server | Recommended. Lets you pick any embedding model without bloating the MCP host. Required for the slim Docker image. |
+| `fastembed` (local default) | In-process ONNX, downloads `BAAI/bge-small-en-v1.5` (~130MB) on first use | Single-host setups where you don't want a separate Ollama server. Requires `pip install ".[fastembed]"`. |
 | `fake` | Deterministic stub | Tests only |
 | `none` | — | Disable semantic features entirely |
 
