@@ -55,6 +55,11 @@ CREATE TABLE IF NOT EXISTS dismissed_link_suggestions (
     dismissed_at REAL NOT NULL,
     PRIMARY KEY (a, b)
 );
+
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -92,21 +97,52 @@ class VectorStore:
         return conn
 
     def _init_schema(self) -> None:
+        """Create tables, then auto-reset if the embedding model or dim changed.
+
+        On a model/dim change we drop the vec table (its dim is baked into
+        DDL) and clear notes/chunks. The reconcile loop in ``Vault`` will
+        see an empty store and re-enqueue every note for re-embedding.
+        Dismissed link suggestions survive — they're tied to wikilink pairs,
+        not embeddings.
+        """
         with self._lock, self._conn:
             self._conn.executescript(SCHEMA)
-            self._conn.execute(_vec_table_ddl(self.dim))
-            # If a prior run used a different dim, vec0 will fail at insert —
-            # better to catch the mismatch at open time and tell the user.
-            row = self._conn.execute(
-                "SELECT model FROM notes LIMIT 1"
-            ).fetchone()
-            if row and row[0] and row[0] != self.model_id:
+            prior_model = self._get_meta_locked("embedding_model")
+            prior_dim_str = self._get_meta_locked("embedding_dim")
+            prior_dim = int(prior_dim_str) if prior_dim_str else None
+
+            mismatch = prior_model is not None and (
+                prior_model != self.model_id or prior_dim != self.dim
+            )
+            if mismatch:
                 logger.warning(
-                    "vector store model mismatch (stored=%s, current=%s) — "
-                    "run rebuild_embeddings to re-populate",
-                    row[0],
+                    "embedding model changed (stored=%s/dim=%s, current=%s/dim=%d) — "
+                    "clearing index for re-embed",
+                    prior_model,
+                    prior_dim,
                     self.model_id,
+                    self.dim,
                 )
+                self._conn.execute("DROP TABLE IF EXISTS chunk_vectors")
+                self._conn.execute("DELETE FROM chunks")
+                self._conn.execute("DELETE FROM notes")
+
+            self._conn.execute(_vec_table_ddl(self.dim))
+            self._set_meta_locked("embedding_model", self.model_id)
+            self._set_meta_locked("embedding_dim", str(self.dim))
+
+    def _get_meta_locked(self, key: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT value FROM meta WHERE key = ?", (key,)
+        ).fetchone()
+        return row[0] if row else None
+
+    def _set_meta_locked(self, key: str, value: str) -> None:
+        self._conn.execute(
+            "INSERT INTO meta(key, value) VALUES(?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
 
     def close(self) -> None:
         with self._lock:

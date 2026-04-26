@@ -1,26 +1,40 @@
 """Embedding backends — thin abstraction so tests can swap in a fake.
 
-The default backend is ``FastEmbedBackend`` (ONNX-based, local, ~100MB
-download on first use). A ``FakeBackend`` is provided for tests so they
-don't pay model-download or inference cost.
+Default backend is ``FastEmbedBackend`` (ONNX-based, local, ~100MB
+download on first use). Set ``OBSIDIAN_EMBEDDER=ollama`` to point at a
+remote Ollama server instead — useful when the MCP runs on a low-power
+host (Pi) and you want a beefier model running on a desktop. A
+``FakeBackend`` is provided for tests.
 
-Backend selection is driven by the ``OBSIDIAN_EMBEDDER`` environment
-variable. Unknown or missing values fall back to fastembed.
+Selection is driven by environment variables:
+
+    OBSIDIAN_EMBEDDER         fastembed | ollama | fake | none
+    OBSIDIAN_EMBEDDER_MODEL   model id (e.g. BAAI/bge-small-en-v1.5,
+                              nomic-embed-text, mxbai-embed-large)
+    OLLAMA_URL                base URL when EMBEDDER=ollama
+                              (default http://localhost:11434)
+
+Switching models is safe: ``VectorStore`` detects the change at startup
+and clears the index so the reconcile loop re-embeds the vault.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import struct
 from abc import ABC, abstractmethod
 from typing import Iterable
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 DEFAULT_DIM = 384
+DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
 
 class EmbeddingBackend(ABC):
@@ -64,6 +78,68 @@ class FastEmbedBackend(EmbeddingBackend):
         return [v.tolist() for v in vectors]
 
 
+class OllamaBackend(EmbeddingBackend):
+    """Embeddings via a remote Ollama server.
+
+    Hits the batch endpoint ``POST /api/embed`` with ``{model, input}``;
+    expects ``{embeddings: [[...], ...]}`` back. Dim is probed from the
+    first response so we don't need to hard-code it per model.
+    """
+
+    def __init__(
+        self,
+        model_id: str,
+        base_url: str = DEFAULT_OLLAMA_URL,
+        timeout: float = 60.0,
+    ):
+        if not model_id:
+            raise ValueError("OllamaBackend requires a model id")
+        self.model_id = model_id
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        # Probed lazily on the first embed call. Zero is a sentinel meaning
+        # "ask the server before opening any vector store sized to this dim".
+        self.dim: int = 0
+
+    def _post(self, inputs: list[str]) -> list[list[float]]:
+        payload = json.dumps({"model": self.model_id, "input": inputs}).encode("utf-8")
+        req = Request(
+            f"{self.base_url}/api/embed",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(req, timeout=self.timeout) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+        except HTTPError as e:
+            raise RuntimeError(
+                f"Ollama returned HTTP {e.code} from {self.base_url}: {e.read().decode('utf-8', errors='replace')}"
+            ) from e
+        except URLError as e:
+            raise RuntimeError(
+                f"could not reach Ollama at {self.base_url}: {e.reason}"
+            ) from e
+        embeddings = body.get("embeddings")
+        if not embeddings:
+            raise RuntimeError(f"Ollama returned no embeddings (model={self.model_id}): {body}")
+        return embeddings
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        vectors = self._post(texts)
+        if self.dim == 0:
+            self.dim = len(vectors[0])
+            logger.info(
+                "ollama embedder ready (model=%s, url=%s, dim=%d)",
+                self.model_id,
+                self.base_url,
+                self.dim,
+            )
+        return vectors
+
+
 class FakeBackend(EmbeddingBackend):
     """Deterministic pseudo-embedding for tests.
 
@@ -103,6 +179,15 @@ def get_backend(name: str | None = None) -> EmbeddingBackend:
     if choice in ("fastembed", "fast-embed", "default", ""):
         model = os.environ.get("OBSIDIAN_EMBEDDER_MODEL", DEFAULT_MODEL)
         return FastEmbedBackend(model_id=model)
+    if choice == "ollama":
+        model = os.environ.get("OBSIDIAN_EMBEDDER_MODEL")
+        if not model:
+            raise ValueError(
+                "OBSIDIAN_EMBEDDER=ollama requires OBSIDIAN_EMBEDDER_MODEL "
+                "(e.g. nomic-embed-text, mxbai-embed-large, bge-m3)"
+            )
+        base_url = os.environ.get("OLLAMA_URL", DEFAULT_OLLAMA_URL)
+        return OllamaBackend(model_id=model, base_url=base_url)
     if choice == "fake":
         return FakeBackend()
     if choice == "none":
