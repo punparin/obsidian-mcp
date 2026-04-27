@@ -56,7 +56,12 @@
     grid-template-columns: 360px 1fr 1fr;
     grid-template-rows: 1fr;
     height: calc(100vh - 45px);
+    transition: grid-template-columns 0.2s ease-out;
   }
+  /* Triaging link suggestions: graph isn't useful, give the cards full
+     remaining width so source/target snippets aren't squeezed. */
+  #app.suggest-mode { grid-template-columns: 360px 1fr; }
+  #app.suggest-mode > .panel.graph-panel { display: none; }
   .panel {
     overflow: auto;
     border-right: 1px solid var(--border);
@@ -320,74 +325,92 @@
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 10px 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
   }
-  .suggestion .pair {
+  .suggestion-header {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 6px;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .suggestion-header .signals {
+    display: flex;
+    gap: 10px;
     flex-wrap: wrap;
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
   }
-  .suggestion .pair-side {
-    flex: 1 1 0;
-    min-width: 0;
+  .suggestion-header .signals .pill {
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--panel2);
   }
-  .suggestion .pair-side .title {
+  .suggestion-header .score {
+    font-family: ui-monospace, monospace;
+    color: var(--good);
+    font-size: 14px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .suggestion-side {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+  }
+  .suggestion-side .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .suggestion-side .title {
     font-weight: 600;
     font-size: 13px;
     color: var(--fg);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    margin-bottom: 2px;
   }
-  .suggestion .pair-side .path {
+  .suggestion-side .path {
     font-family: ui-monospace, monospace;
     font-size: 11px;
     color: var(--muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    margin-bottom: 6px;
+    word-break: break-all;
   }
-  .suggestion .arrow { color: var(--muted); font-family: ui-monospace, monospace; }
-  .suggestion .score {
-    font-family: ui-monospace, monospace;
-    color: var(--good);
-    font-size: 13px;
-  }
-  .suggestion .signals {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    font-size: 11px;
-    color: var(--muted);
-    margin: 4px 0;
-    font-variant-numeric: tabular-nums;
-  }
-  .suggestion .snippet {
+  .suggestion-side .snippet {
     font-size: 12px;
-    color: var(--muted);
-    border-left: 2px solid var(--border);
-    padding-left: 8px;
+    color: var(--fg);
     line-height: 1.5;
-    margin: 6px 0;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
-  .suggestion .actions {
+  .suggestion-arrow {
+    text-align: center;
+    color: var(--muted);
+    font-family: ui-monospace, monospace;
+    font-size: 16px;
+    margin: 4px 0;
+  }
+  .suggestion-actions {
     display: flex;
     gap: 6px;
-    margin-top: 6px;
+    margin-top: 10px;
   }
-  .suggestion .actions button {
-    font-size: 11px;
-    padding: 4px 10px;
+  .suggestion-actions button {
+    font-size: 12px;
+    padding: 6px 12px;
   }
-  .suggestion .actions .apply { background: var(--good); color: #0d1117; }
-  .suggestion .actions .dismiss {
+  .suggestion-actions .apply { background: var(--good); color: #0d1117; }
+  .suggestion-actions .dismiss {
     background: transparent;
     color: var(--muted);
     border: 1px solid var(--border);
   }
-  .suggestion .actions .dismiss:hover { color: var(--pink); border-color: var(--pink); }
+  .suggestion-actions .dismiss:hover { color: var(--pink); border-color: var(--pink); }
   .suggestion.applied { border-color: var(--good); opacity: 0.6; }
   .suggestion.dismissed { border-color: var(--pink); opacity: 0.4; }
 </style>
@@ -540,7 +563,7 @@
   </div>
 
   <!-- RIGHT: graph -->
-  <div class="panel" style="padding:0;">
+  <div class="panel graph-panel" style="padding:0;">
     <div id="graph"></div>
   </div>
 </div>
@@ -702,6 +725,8 @@ document.querySelectorAll('.tab').forEach(btn => {
       p.classList.toggle('active', isMatch);
       p.style.display = isMatch ? '' : 'none';
     });
+    // Hide the graph column on the suggest tab so cards get full width.
+    document.getElementById('app').classList.toggle('suggest-mode', tab === 'suggest');
   });
 });
 
@@ -734,28 +759,35 @@ function renderSuggestions(items) {
     const card = document.createElement('div');
     card.className = 'suggestion';
 
-    const sharedTags = (item.shared_tags || []).map(t => `<span class="pill on-tag">#${escapeHtml(t)}</span>`).join('');
+    const sharedTags = (item.shared_tags || [])
+      .map(t => `<span class="pill on-tag">#${escapeHtml(t)}</span>`)
+      .join('');
+    const sourceSnippet = item.source_snippet || item.snippet || '';
+    const targetSnippet = item.target_snippet || item.snippet || '';
     card.innerHTML = `
-      <div class="pair">
-        <div class="pair-side">
-          <div class="title">${escapeHtml(item.source_title)}</div>
-          <div class="path">${escapeHtml(item.source)}</div>
-        </div>
-        <span class="arrow">↔</span>
-        <div class="pair-side">
-          <div class="title">${escapeHtml(item.target_title)}</div>
-          <div class="path">${escapeHtml(item.target)}</div>
+      <div class="suggestion-header">
+        <div class="signals">
+          <span class="pill">cos_sim ${item.cos_sim.toFixed(3)}</span>
+          <span class="pill">tag_jaccard ${item.tag_jaccard.toFixed(3)}</span>
+          ${sharedTags}
+          ${item.heading ? `<span class="pill">heading: ${escapeHtml(item.heading)}</span>` : ''}
         </div>
         <span class="score">${item.score.toFixed(3)}</span>
       </div>
-      <div class="signals">
-        <span>cos_sim ${item.cos_sim.toFixed(3)}</span>
-        <span>tag_jaccard ${item.tag_jaccard.toFixed(3)}</span>
-        ${sharedTags ? `<span>${sharedTags}</span>` : ''}
-        ${item.heading ? `<span style="color:var(--muted)">heading: ${escapeHtml(item.heading)}</span>` : ''}
+      <div class="suggestion-side">
+        <div class="label">Source</div>
+        <div class="title">${escapeHtml(item.source_title)}</div>
+        <div class="path">${escapeHtml(item.source)}</div>
+        <div class="snippet">${escapeHtml(sourceSnippet)}</div>
       </div>
-      <div class="snippet">${escapeHtml(item.snippet || '')}</div>
-      <div class="actions">
+      <div class="suggestion-arrow">↕</div>
+      <div class="suggestion-side">
+        <div class="label">Target</div>
+        <div class="title">${escapeHtml(item.target_title)}</div>
+        <div class="path">${escapeHtml(item.target)}</div>
+        <div class="snippet">${escapeHtml(targetSnippet)}</div>
+      </div>
+      <div class="suggestion-actions">
         <button class="apply" data-action="apply">Apply (add See also)</button>
         <button class="dismiss" data-action="dismiss">Dismiss</button>
       </div>

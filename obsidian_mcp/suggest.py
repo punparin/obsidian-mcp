@@ -39,6 +39,7 @@ DEFAULT_BODY_CAP = 2000
 DEFAULT_BATCH = 32
 W_SEM = 0.7
 W_TAG = 0.3
+SNIPPET_LEN = 360  # chars per side — long enough to read context, short enough to skim
 
 
 def _tag_jaccard(a: set[str], b: set[str]) -> float:
@@ -86,8 +87,11 @@ def suggest_links(
 
     linked_pairs = _all_linked_pairs(index)
 
-    # Build (path, body_for_embedding) for each source.
-    prepared: list[tuple[str, str]] = []
+    # Build (path, body_for_embedding, source_snippet) for each source.
+    # The snippet is what the explorer card shows for the source side, so
+    # keep it shorter than the embed cap.
+    prepared: list[tuple[str, str, str]] = []
+    source_snippets: dict[str, str] = {}
     for src in sources:
         try:
             raw = (vault.root / src).read_text(encoding="utf-8")
@@ -100,13 +104,14 @@ def suggest_links(
         note = index.get(src)
         if note is None:
             continue
-        prepared.append((src, body[:DEFAULT_BODY_CAP]))
+        source_snippets[src] = body[:SNIPPET_LEN]
+        prepared.append((src, body[:DEFAULT_BODY_CAP], source_snippets[src]))
 
     if not prepared:
         return []
 
     # Batch embed all source bodies in one pass.
-    texts = [body for _, body in prepared]
+    texts = [body for _, body, _ in prepared]
     src_vectors: list[list[float]] = []
     for batch in batched(texts, DEFAULT_BATCH):
         src_vectors.extend(backend.embed(batch))
@@ -115,7 +120,7 @@ def suggest_links(
 
     # candidates[canonical_pair] = best record so far
     candidates: dict[tuple[str, str], dict] = {}
-    for (src, _), src_vec in zip(prepared, src_vectors):
+    for (src, _, _), src_vec in zip(prepared, src_vectors):
         hits = store.knn(src_vec, k=k_per_note)
         # Aggregate hits to best-per-target.
         best_per_target: dict[str, tuple[float, dict]] = {}
@@ -151,6 +156,7 @@ def suggest_links(
             existing_record = candidates.get(pair)
             if existing_record is not None and existing_record["score"] >= score:
                 continue
+            target_snippet = hit["text"][:SNIPPET_LEN]
             candidates[pair] = {
                 "source": src,
                 "target": tgt,
@@ -160,7 +166,11 @@ def suggest_links(
                 "cos_sim": round(cos_sim, 4),
                 "tag_jaccard": round(tag_jacc, 3),
                 "shared_tags": sorted(src_tags & tgt_tags),
-                "snippet": hit["text"][:240],
+                "source_snippet": source_snippets.get(src, ""),
+                "target_snippet": target_snippet,
+                # Back-compat alias for the old single-snippet shape — the
+                # matched chunk has always come from the target side.
+                "snippet": target_snippet,
                 "heading": hit.get("heading", ""),
             }
 
