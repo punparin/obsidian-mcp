@@ -97,8 +97,15 @@ class TestSuggestLinksScoring:
         assert results
         r = results[0]
         for key in ("source", "target", "score", "cos_sim", "tag_jaccard",
-                    "shared_tags", "snippet", "source_title", "target_title"):
+                    "shared_tags", "snippet", "source_snippet", "target_snippet",
+                    "source_title", "target_title"):
             assert key in r
+        # Back-compat: `snippet` still mirrors the matched-chunk text from
+        # the target side, so older clients keep working.
+        assert r["snippet"] == r["target_snippet"]
+        # Both snippets are populated for the explorer UI.
+        assert r["source_snippet"]
+        assert r["target_snippet"]
 
 
 class TestDismiss:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,15 @@ from ..links import get_graph
 from ..vault import Vault
 
 logger = logging.getLogger(__name__)
+
+
+def _package_version() -> str:
+    """Resolve the installed package version, falling back to 'dev' when the
+    explorer is run from a non-installed checkout."""
+    try:
+        return metadata.version("obsidian-mcp")
+    except metadata.PackageNotFoundError:
+        return "dev"
 
 
 class SearchRequest(BaseModel):
@@ -69,6 +79,7 @@ def create_app() -> FastAPI:
             "vault": str(vault.root),
             "semantic_enabled": vault.semantic_enabled,
             "stats": vault.embedding_stats(),
+            "version": _package_version(),
         }
 
     @app.post("/api/search")
