@@ -45,6 +45,16 @@
     color: var(--muted);
     text-transform: uppercase;
   }
+  header h1 .version {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--muted);
+    opacity: 0.7;
+    margin-left: 4px;
+  }
   header .stats {
     margin-left: auto;
     font-size: 12px;
@@ -417,7 +427,7 @@
 </head>
 <body>
 <header>
-  <h1>obsidian-mcp · vault explorer</h1>
+  <h1>obsidian-mcp · vault explorer <span class="version" id="version"></span></h1>
   <div class="stats" id="stats">connecting…</div>
 </header>
 <div id="app">
@@ -831,6 +841,9 @@ async function loadStats() {
     const s = data.stats || {};
     document.getElementById('stats').textContent =
       `vault ${data.vault.split('/').pop()} · ${s.notes || 0} notes · ${s.chunks || 0} chunks · ${s.queue_idle === false ? `pending ${s.queue_pending}` : 'idle'}`;
+    if (data.version) {
+      document.getElementById('version').textContent = `v${data.version}`;
+    }
   } catch (e) {
     document.getElementById('stats').textContent = 'offline';
   }
