@@ -2,6 +2,32 @@
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that gives any MCP-capable agent (Claude Code, Cursor, Cline, Continue, Goose, Windsurf, …) full read/write access to an Obsidian vault. Built with [FastMCP](https://github.com/jlowin/fastmcp).
 
+## Quickstart
+
+```bash
+# 1. Pull the image
+docker pull ghcr.io/punparin/obsidian-mcp:latest
+
+# 2. Register with your MCP client (Claude Code shown — see "Register
+#    with Your MCP Client" below for other clients). Skip semantic
+#    search by setting OBSIDIAN_EMBEDDER=none if you don't have an
+#    Ollama server handy.
+claude mcp add -s user obsidian -- \
+  docker run -i --rm \
+    -v /path/to/your/vault:/vault \
+    -e OBSIDIAN_EMBEDDER=none \
+    ghcr.io/punparin/obsidian-mcp:latest
+```
+
+Then ask your agent something like *"list the notes I have about
+project X"* or *"search my vault for the rate-limiting decision."*
+The agent picks the right tool (`list_notes`, `search`,
+`semantic_search`, etc.) on its own.
+
+For the full semantic-search experience, point it at an Ollama
+server: `-e OBSIDIAN_EMBEDDER=ollama -e OBSIDIAN_EMBEDDER_MODEL=qwen3-embedding:8b -e OLLAMA_URL=http://desktop.local:11434`.
+Details under [Semantic Retrieval](#semantic-retrieval).
+
 ## Architecture
 
 ```mermaid
