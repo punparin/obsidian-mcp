@@ -31,13 +31,18 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    MCP[Obsidian MCP - 16 tools]
+    MCP[Obsidian MCP - 33 tools]
 
     MCP --> FileOps[File Operations - 6 tools]
     MCP --> Search[Search - 4 tools]
     MCP --> Meta[Frontmatter - 2 tools]
-    MCP --> Links[Links and Graph - 3 tools]
+    MCP --> Links[Links and Graph - 4 tools]
     MCP --> Tpl[Templates - 1 tool]
+    MCP --> Lint[Lint - 4 tools]
+    MCP --> Schema[Schema - 3 tools]
+    MCP --> Ingest[Ingest - 3 tools]
+    MCP --> Sem[Semantic - 3 tools]
+    MCP --> Sug[Suggest - 3 tools]
     MCP --> Res[Resources - 2 auto-loaded]
 
     FileOps --> F1[read_note, write_note, append_note, list_notes, delete_note, move_note]
@@ -45,6 +50,11 @@ flowchart TD
     Meta --> FM1[get_note_frontmatter, update_note_frontmatter]
     Links --> L1[get_backlinks, get_wikilinks, get_vault_graph, get_orphan_notes]
     Tpl --> T1[create_note_from_template]
+    Lint --> LI1[find_broken_wikilinks, find_stale_notes, find_duplicate_titles, lint_vault]
+    Schema --> SC1[get_schema, validate_note_schema, validate_vault_schema]
+    Ingest --> IN1[list_inbox, find_related_notes, archive_inbox_note]
+    Sem --> SM1[semantic_search, rebuild_embeddings, embedding_stats]
+    Sug --> SG1[suggest_links, apply_link_suggestion, dismiss_link_suggestion]
     Res --> R1[vault-map, mocs]
 ```
 
@@ -73,7 +83,7 @@ sequenceDiagram
 
 ## Features
 
-**30 tools + 2 resources** for complete vault management, self-maintaining knowledge wiki, and semantic retrieval:
+**33 tools + 2 resources** for complete vault management, self-maintaining knowledge wiki, and semantic retrieval:
 
 | Group | Tool | Description |
 |---|---|---|
@@ -241,7 +251,7 @@ Two backends are available; pick one with `OBSIDIAN_EMBEDDER`:
 | `OBSIDIAN_EMBEDDER` | Where it runs | When to use |
 |---|---|---|
 | `ollama` (Docker default) | HTTP to a remote [Ollama](https://ollama.com) server | Recommended. Lets you pick any embedding model without bloating the MCP host. Required for the slim Docker image. |
-| `fastembed` (local default) | In-process ONNX, downloads `BAAI/bge-small-en-v1.5` (~130MB) on first use | Single-host setups where you don't want a separate Ollama server. Requires `pip install ".[fastembed]"`. |
+| `fastembed` (factory default when unset) | In-process ONNX, downloads `BAAI/bge-small-en-v1.5` (~130MB) on first use | Single-host setups where you don't want a separate Ollama server. Requires `pip install ".[fastembed]"` — base install will fail to start with a hint pointing here. |
 | `fake` | Deterministic stub | Tests only |
 | `none` | — | Disable semantic features entirely |
 
