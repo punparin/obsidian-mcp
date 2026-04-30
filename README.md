@@ -65,21 +65,24 @@ sequenceDiagram
     actor User
     participant Claude
     participant MCP as Obsidian MCP
+    participant Index as In-memory index + vector store
     participant Vault
 
     User->>Claude: What did we decide about rate limiting?
-    Claude->>MCP: read vault-map
-    MCP->>Vault: scan notes
-    Vault-->>MCP: notes index
-    MCP-->>Claude: vault structure
-    Claude->>MCP: search_by_tags rate-limiting
-    MCP-->>Claude: matching notes
+    Claude->>MCP: semantic_search("rate limiting decision")
+    MCP->>Index: embed query, kNN over chunks, graph re-rank
+    Index-->>MCP: ranked notes with cos_sim + graph signals
+    MCP-->>Claude: top hits + score breakdown
     Claude->>MCP: read_note decisions/rate-limiting.md
     MCP->>Vault: read file
-    Vault-->>MCP: content
+    Vault-->>MCP: content + frontmatter
     MCP-->>Claude: full note
     Claude->>User: We chose token bucket because...
 ```
+
+The index and vector store live under `<vault>/.obsidian-mcp/` and stay
+in sync with the vault via the filesystem watcher — Claude never needs
+to re-scan to see your latest edits.
 
 ## Features
 
