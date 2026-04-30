@@ -1,18 +1,18 @@
 # Obsidian MCP Server
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that gives Claude Code full read/write access to an Obsidian vault. Built with [FastMCP](https://github.com/jlowin/fastmcp).
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that gives any MCP-capable agent (Claude Code, Cursor, Cline, Continue, Goose, Windsurf, …) full read/write access to an Obsidian vault. Built with [FastMCP](https://github.com/jlowin/fastmcp).
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     User[You]
-    Claude[Claude Code]
+    Agent[MCP Client / Agent]
     Server[Obsidian MCP]
     Vault[(Obsidian Vault)]
 
-    User --> Claude
-    Claude <--> Server
+    User --> Agent
+    Agent <--> Server
     Server --> Vault
     Vault -.-> Server
 
@@ -22,7 +22,7 @@ flowchart LR
     classDef store fill:#f3e5f5,stroke:#333
 
     class User user
-    class Claude ai
+    class Agent ai
     class Server mcp
     class Vault store
 ```
@@ -58,31 +58,31 @@ flowchart TD
     Res --> R1[vault-map, mocs]
 ```
 
-## How Claude Uses Your Vault
+## How an Agent Uses Your Vault
 
 ```mermaid
 sequenceDiagram
     actor User
-    participant Claude
+    participant Agent as MCP Client
     participant MCP as Obsidian MCP
     participant Index as In-memory index + vector store
     participant Vault
 
-    User->>Claude: What did we decide about rate limiting?
-    Claude->>MCP: semantic_search("rate limiting decision")
+    User->>Agent: What did we decide about rate limiting?
+    Agent->>MCP: semantic_search("rate limiting decision")
     MCP->>Index: embed query, kNN over chunks, graph re-rank
     Index-->>MCP: ranked notes with cos_sim + graph signals
-    MCP-->>Claude: top hits + score breakdown
-    Claude->>MCP: read_note decisions/rate-limiting.md
+    MCP-->>Agent: top hits + score breakdown
+    Agent->>MCP: read_note decisions/rate-limiting.md
     MCP->>Vault: read file
     Vault-->>MCP: content + frontmatter
-    MCP-->>Claude: full note
-    Claude->>User: We chose token bucket because...
+    MCP-->>Agent: full note
+    Agent->>User: We chose token bucket because...
 ```
 
 The index and vector store live under `<vault>/.obsidian-mcp/` and stay
-in sync with the vault via the filesystem watcher — Claude never needs
-to re-scan to see your latest edits.
+in sync with the vault via the filesystem watcher — the agent never
+needs to re-scan to see your latest edits.
 
 ## Features
 
@@ -163,9 +163,16 @@ python3 -m venv .venv
 > expect a remote Ollama server. This keeps the Docker image slim and
 > removes any chance of an unexpected model download at runtime.
 
-## Register with Claude Code
+## Register with Your MCP Client
 
-### Docker
+The server speaks stdio MCP, so it works with any MCP-capable client.
+Concrete examples below use Claude Code's `claude mcp add` CLI, but the
+shape is the same for [Cursor](https://docs.cursor.com/), [Cline](https://cline.bot/),
+[Continue](https://www.continue.dev/), [Goose](https://block.github.io/goose/),
+[Windsurf](https://codeium.com/windsurf), or any other MCP host —
+consult your client's docs for its registration syntax.
+
+### Docker (Claude Code example)
 
 The image defaults to `OBSIDIAN_EMBEDDER=ollama` and contains no embedding
 model — point it at an Ollama server you already run (e.g. on a desktop)
@@ -182,7 +189,7 @@ claude mcp add \
        ghcr.io/punparin/obsidian-mcp:latest
 ```
 
-### Local
+### Local (Claude Code example)
 
 ```bash
 claude mcp add \
@@ -192,6 +199,10 @@ claude mcp add \
   -- /path/to/obsidian-mcp/.venv/bin/python -m obsidian_mcp
 ```
 
+For other clients, plug the same `docker run …` or `python -m obsidian_mcp`
+command into your client's MCP server config (typically a JSON entry
+specifying the command, args, and env).
+
 ## Configuration
 
 Set the vault path via environment variable:
@@ -200,12 +211,15 @@ Set the vault path via environment variable:
 export OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
 ```
 
-## Using With Claude Code
+## Agent Usage Guide
 
 See [`docs/using-with-claude-code.md`](docs/using-with-claude-code.md)
 for rules on tool choice (semantic vs exact), writing flow, ingest
 flow, interpreting score signals, and a ready-to-paste block for your
-`CLAUDE.md`.
+agent's system prompt or per-project instruction file (`CLAUDE.md`,
+`.cursor/rules`, `.continuerules`, AGENTS.md, etc.). The patterns
+transfer to any MCP client; only the file Claude Code happens to
+read is named `CLAUDE.md`.
 
 ## Semantic Retrieval
 
@@ -318,7 +332,7 @@ Obsidian — or any other tool — are reflected in the next MCP query
 without restarting the server.
 
 The watcher also backs **conflict detection on writes**: if a note
-changed on disk between Claude's last `read_note` and its next
+changed on disk between the agent's last `read_note` and its next
 `write_note` on the same path, the write is refused with a
 `NoteConflictError` so you don't clobber an edit made in Obsidian. Pass
 `force=true` to override intentionally.
@@ -340,7 +354,7 @@ status: active        # draft, active, archived
 ---
 ```
 
-The `type` field helps Claude understand what kind of note it's looking at without reading the full content.
+The `type` field helps the agent understand what kind of note it's looking at without reading the full content.
 
 ## Templates
 
@@ -409,7 +423,7 @@ Drop articles, rough notes, or research into vault `inbox/` folder. Workflow:
 5. archive_inbox_note          → move source to archive/YYYY-MM/
 ```
 
-Claude does the synthesis. The MCP just handles bookkeeping.
+The agent does the synthesis. The MCP just handles bookkeeping.
 
 ## Development
 
@@ -470,9 +484,9 @@ docker run --rm -p 8765:8765 -v /path/to/vault:/vault obsidian-mcp-explorer
 ```
 
 The Explorer imports `Vault` directly — same SQLite index as the MCP
-server, so changes you make in Claude Code or Obsidian show up live.
-Tuning a weight slider re-issues the query against the current index;
-no server restart needed.
+server, so changes made through any MCP client or in Obsidian show up
+live. Tuning a weight slider re-issues the query against the current
+index; no server restart needed.
 
 #### Endpoints
 
