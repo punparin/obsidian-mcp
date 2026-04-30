@@ -212,6 +212,19 @@ class Vault:
         from .vector_store import VectorStore
 
         backend = embedder or get_backend()
+        # Pre-flight: verify the backend is actually usable before we open
+        # the vector store and start the embed queue. Catches the common
+        # "Ollama unreachable" / "model not pulled" cases at startup with
+        # an actionable hint instead of a stack trace on first query.
+        ok, detail = backend.health_check()
+        if not ok:
+            logger.warning(
+                "embedding backend health check failed (%s); semantic "
+                "features disabled. Detail: %s",
+                backend.model_id,
+                detail,
+            )
+            return False
         # Materialise the model early so dim is known before we open the store.
         backend.embed(["warmup"])
         store = VectorStore(
