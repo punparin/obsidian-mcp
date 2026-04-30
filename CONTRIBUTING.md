@@ -34,18 +34,18 @@ Lint failures block the Docker build job in CI. Fix locally before pushing.
 
 ## Branch naming
 
-`<type>/<short-kebab-description>` where `<type>` is one of `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`.
+Pick something short and descriptive — kebab-case, prefixed with the kind of change if helpful (`fix-`, `add-`, `refactor-`).
 
-Examples: `feat/explorer-link-suggestions`, `fix/wikilink-resolver-case-sensitivity`.
+Examples: `add-link-suggestions`, `fix-wikilink-case-sensitivity`, `refactor-semantic-rerank`.
 
 ## Commit + PR title
 
-[Conventional Commits](https://www.conventionalcommits.org/): `<type>(<scope>)?: <imperative summary, lowercase, no trailing period>`, ≤70 characters.
+Lowercase imperative summary, ≤70 characters, no trailing period. Match what you'd write in a git log when skimming the repo's history.
 
 Examples:
-- `feat(explorer): show package version in header`
-- `fix(semantic): keep embedding_stats fresh on startup`
-- `docs: refresh tool counts and embedder notes`
+- `show package version in explorer header`
+- `keep embedding_stats fresh on startup`
+- `refresh tool counts and embedder notes`
 
 ## PR body
 
