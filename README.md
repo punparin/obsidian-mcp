@@ -65,21 +65,24 @@ sequenceDiagram
     actor User
     participant Claude
     participant MCP as Obsidian MCP
+    participant Index as In-memory index + vector store
     participant Vault
 
     User->>Claude: What did we decide about rate limiting?
-    Claude->>MCP: read vault-map
-    MCP->>Vault: scan notes
-    Vault-->>MCP: notes index
-    MCP-->>Claude: vault structure
-    Claude->>MCP: search_by_tags rate-limiting
-    MCP-->>Claude: matching notes
+    Claude->>MCP: semantic_search("rate limiting decision")
+    MCP->>Index: embed query, kNN over chunks, graph re-rank
+    Index-->>MCP: ranked notes with cos_sim + graph signals
+    MCP-->>Claude: top hits + score breakdown
     Claude->>MCP: read_note decisions/rate-limiting.md
     MCP->>Vault: read file
-    Vault-->>MCP: content
+    Vault-->>MCP: content + frontmatter
     MCP-->>Claude: full note
     Claude->>User: We chose token bucket because...
 ```
+
+The index and vector store live under `<vault>/.obsidian-mcp/` and stay
+in sync with the vault via the filesystem watcher — Claude never needs
+to re-scan to see your latest edits.
 
 ## Features
 
@@ -104,20 +107,20 @@ sequenceDiagram
 | | `get_vault_graph` | Full link graph (nodes + edges) |
 | | `get_orphan_notes` | Find disconnected notes |
 | Templates | `create_note_from_template` | Create note from template with {{variables}} |
-| **Lint** (v0.2) | `find_broken_wikilinks` | Find unresolvable [[links]] |
+| **Lint** | `find_broken_wikilinks` | Find unresolvable [[links]] |
 | | `find_stale_notes` | Old notes still referenced from recent ones |
 | | `find_duplicate_titles` | Notes with same filename in different folders |
 | | `lint_vault` | Run all lint checks at once |
-| **Schema** (v0.2) | `get_schema` | Read schema.yml from vault root |
+| **Schema** | `get_schema` | Read schema.yml from vault root |
 | | `validate_note_schema` | Validate single note against schema |
 | | `validate_vault_schema` | Validate entire vault |
-| **Ingest** (v0.2) | `list_inbox` | List notes pending ingestion |
+| **Ingest** | `list_inbox` | List notes pending ingestion |
 | | `find_related_notes` | Find existing notes related to raw content (semantic when enabled, lexical fallback) |
 | | `archive_inbox_note` | Move processed note to archive/YYYY-MM/ |
-| **Semantic** (v0.3) | `semantic_search` | Embedding + graph-aware re-rank over note chunks |
+| **Semantic** | `semantic_search` | Embedding + graph-aware re-rank over note chunks |
 | | `rebuild_embeddings` | Full re-embed of the vault (idempotent) |
 | | `embedding_stats` | Inspect the embedding index (counts, model, path) |
-| **Suggest** (v0.5) | `suggest_links` | Find note pairs that look related but aren't wikilinked |
+| **Suggest** | `suggest_links` | Find note pairs that look related but aren't wikilinked |
 | | `apply_link_suggestion` | Append `See also: [[target]]` (idempotent) |
 | | `dismiss_link_suggestion` | Hide a pair from future suggestions (persistent) |
 
@@ -155,11 +158,10 @@ python3 -m venv .venv
 .venv/bin/pip install -e .                # base only — semantic features require Ollama (see below)
 ```
 
-> **Heads up (v0.7+):** `fastembed` is no longer in base deps. The Docker
-> image and the bare `pip install -e .` ship without it; semantic
-> features then expect a remote Ollama server. This shrinks the Docker
-> image by ~130MB and removes any chance of an unexpected model download
-> at runtime.
+> **Heads up:** `fastembed` is not in base deps. The Docker image and
+> the bare `pip install -e .` ship without it; semantic features then
+> expect a remote Ollama server. This keeps the Docker image slim and
+> removes any chance of an unexpected model download at runtime.
 
 ## Register with Claude Code
 
@@ -205,7 +207,7 @@ for rules on tool choice (semantic vs exact), writing flow, ingest
 flow, interpreting score signals, and a ready-to-paste block for your
 `CLAUDE.md`.
 
-## Semantic Retrieval (v0.3)
+## Semantic Retrieval
 
 Local-first semantic search over your vault, using your hand-curated graph
 (wikilinks, tags, frontmatter) to re-rank the raw embedding results.
@@ -281,7 +283,7 @@ dim. On startup, if either has changed, the index is cleared and the
 reconcile loop re-embeds every note in the background. Expect a few
 minutes of degraded search quality after a switch on large vaults.
 
-## Auto-Link Suggestions (v0.5)
+## Auto-Link Suggestions
 
 Find pairs of notes that look related but aren't wikilinked yet — and
 grow your graph without re-reading the whole vault.
@@ -357,7 +359,7 @@ Created on {{date}} at {{time}}.
 
 Built-in variables: `{{title}}`, `{{date}}`, `{{time}}`, `{{datetime}}`
 
-## Self-Maintaining Wiki (v0.2)
+## Self-Maintaining Wiki
 
 Inspired by [Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). Three layers turn your vault into a knowledge base that compounds over time:
 
