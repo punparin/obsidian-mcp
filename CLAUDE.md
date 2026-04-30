@@ -24,11 +24,15 @@ OBSIDIAN_VAULT_PATH=/path/to/vault .venv/bin/python -m obsidian_mcp.server
   write-conflict detection in `Vault.write_note`.
 - `obsidian_mcp/chunker.py` — markdown-aware splitter (H2/H3 sections,
   paragraph packing) for semantic retrieval.
-- `obsidian_mcp/embeddings.py` — backend abstraction (`FastEmbedBackend`
-  default, `OllamaBackend` for remote inference, `FakeBackend` for
-  tests), selected via `OBSIDIAN_EMBEDDER` (`fastembed` | `ollama` |
-  `fake` | `none`). Ollama also reads `OBSIDIAN_EMBEDDER_MODEL` and
-  `OLLAMA_URL`. Switching models auto-clears the index on next start.
+- `obsidian_mcp/embeddings.py` — backend abstraction (`FastEmbedBackend`,
+  `OllamaBackend` for remote inference, `FakeBackend` for tests),
+  selected via `OBSIDIAN_EMBEDDER` (`fastembed` | `ollama` | `fake` |
+  `none`). Factory default when the env var is unset is `fastembed`,
+  but the base install (and the Docker image) ships without `fastembed`
+  in deps and sets `OBSIDIAN_EMBEDDER=ollama` — installing the
+  `[fastembed]` extra is required to use the in-process backend.
+  Ollama also reads `OBSIDIAN_EMBEDDER_MODEL` and `OLLAMA_URL`.
+  Switching models auto-clears the index on next start.
 - `obsidian_mcp/vector_store.py` — chunk-level SQLite + `sqlite-vec`
   store under `<vault>/.obsidian-mcp/index.db`.
 - `obsidian_mcp/semantic.py` — query pipeline: embed → kNN → graph re-rank

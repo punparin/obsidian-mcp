@@ -163,9 +163,12 @@ and less "Claude keeps surfacing the same explicitly-linked notes."
 
 ## Operational notes
 
-- **First run** after upgrading downloads the embedding model
-  (~100MB, ~15s on a Pi, faster elsewhere) and rebuilds the index
-  from scratch. Subsequent runs reuse the cache.
+- **First run** rebuilds the index from scratch. With
+  `OBSIDIAN_EMBEDDER=fastembed` (local install via the `[fastembed]`
+  extra) the first run also downloads `BAAI/bge-small-en-v1.5`
+  (~130MB, ~15s on a Pi). With `OBSIDIAN_EMBEDDER=ollama` (Docker
+  default) no model download happens locally — the Ollama server
+  pulls the model on its end. Subsequent runs reuse the cache.
 - **Git-tracked vault?** Add `/.obsidian-mcp/` to the vault's
   `.gitignore`. The SQLite WAL churns on every edit and isn't worth
   committing.
