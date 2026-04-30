@@ -65,7 +65,9 @@ try:
     if vault.enable_semantic():
         logger.info("semantic retrieval enabled")
     else:
-        logger.info("semantic retrieval disabled (OBSIDIAN_EMBEDDER=none)")
+        # Specific reason already logged inside enable_semantic — either
+        # OBSIDIAN_EMBEDDER=none, or the backend health check failed.
+        logger.info("semantic retrieval disabled")
 except Exception:
     logger.exception("failed to enable semantic retrieval; continuing without it")
 mcp = FastMCP("obsidian")

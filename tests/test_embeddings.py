@@ -121,6 +121,61 @@ class TestOllamaBackend:
             OllamaBackend(model_id="")
 
 
+class TestOllamaHealthCheck:
+    """Pre-flight check that runs once at startup, before the warmup
+    embed. Surfaces the two common setup failures (server unreachable,
+    model not pulled) with actionable hints instead of letting the
+    warmup raise on a confusing first query."""
+
+    def test_passes_when_model_is_pulled(self):
+        backend = OllamaBackend(model_id="qwen3-embedding:8b", base_url="http://x:11434")
+        with patch(
+            "obsidian_mcp.embeddings.urlopen",
+            return_value=_stub_response({
+                "models": [{"name": "qwen3-embedding:8b"}, {"name": "llama3:latest"}],
+            }),
+        ):
+            ok, detail = backend.health_check()
+        assert ok
+        assert detail == "ok"
+
+    def test_passes_when_model_id_omits_tag_and_latest_is_pulled(self):
+        """Users may pass `qwen3-embedding` without a tag; Ollama lists it
+        as `qwen3-embedding:latest`. Both should resolve to ok."""
+        backend = OllamaBackend(model_id="qwen3-embedding", base_url="http://x:11434")
+        with patch(
+            "obsidian_mcp.embeddings.urlopen",
+            return_value=_stub_response({"models": [{"name": "qwen3-embedding:latest"}]}),
+        ):
+            ok, _ = backend.health_check()
+        assert ok
+
+    def test_fails_with_actionable_hint_when_server_unreachable(self):
+        from urllib.error import URLError
+
+        backend = OllamaBackend(model_id="m", base_url="http://nope.invalid:11434")
+        with patch(
+            "obsidian_mcp.embeddings.urlopen",
+            side_effect=URLError("nodename nor servname provided"),
+        ):
+            ok, detail = backend.health_check()
+        assert not ok
+        assert "could not reach Ollama" in detail
+        assert "OBSIDIAN_EMBEDDER=none" in detail  # disable hint
+        assert "OLLAMA_URL" in detail  # fix hint
+
+    def test_fails_with_pull_command_when_model_missing(self):
+        backend = OllamaBackend(model_id="bge-m3", base_url="http://x:11434")
+        with patch(
+            "obsidian_mcp.embeddings.urlopen",
+            return_value=_stub_response({"models": [{"name": "llama3:latest"}]}),
+        ):
+            ok, detail = backend.health_check()
+        assert not ok
+        assert "ollama pull bge-m3" in detail
+        assert "llama3:latest" in detail  # lists what *is* available
+
+
 class TestGetBackend:
     def test_default_returns_fastembed(self, monkeypatch):
         monkeypatch.delenv("OBSIDIAN_EMBEDDER", raising=False)

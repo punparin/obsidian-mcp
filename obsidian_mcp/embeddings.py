@@ -47,6 +47,25 @@ class EmbeddingBackend(ABC):
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Return one vector per input text, in order."""
 
+    def health_check(self) -> tuple[bool, str]:
+        """Cheap pre-flight verification run once at startup.
+
+        Default impl: try a one-string embed and call any non-empty result a
+        success. Backends that talk to a remote service should override with
+        a lighter check (e.g. listing models) so we don't pay for a real
+        embedding request just to confirm the service is up.
+
+        Returns ``(ok, detail)``. The detail string is a short human-readable
+        explanation of *why* — used in the warning logged on failure.
+        """
+        try:
+            vectors = self.embed(["health-check"])
+            if not vectors or not vectors[0]:
+                return False, "backend returned no embedding for the health-check probe"
+            return True, "ok"
+        except Exception as exc:  # noqa: BLE001 — surfacing the message back to the user
+            return False, str(exc)
+
 
 class FastEmbedBackend(EmbeddingBackend):
     """Local, ONNX-backed embeddings. Lazy-loads the model on first embed."""
@@ -148,6 +167,48 @@ class OllamaBackend(EmbeddingBackend):
                 self.dim,
             )
         return vectors
+
+    def health_check(self) -> tuple[bool, str]:
+        """Confirm the Ollama server is up *and* has the configured model.
+
+        Hits ``GET /api/tags`` (cheap, no embedding work) and checks the
+        configured ``model_id`` is in the pulled list. Returns actionable
+        messages for the two common failure modes — server unreachable, or
+        server up but model not pulled — instead of letting the user discover
+        them on the first ``semantic_search`` call.
+        """
+        try:
+            req = Request(
+                f"{self.base_url}/api/tags",
+                headers={"Accept": "application/json"},
+                method="GET",
+            )
+            with urlopen(req, timeout=self.timeout) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+        except URLError as e:
+            return False, (
+                f"could not reach Ollama at {self.base_url}: {e.reason}. "
+                "Set OBSIDIAN_EMBEDDER=none to disable semantic features, "
+                "or fix OLLAMA_URL / start the server."
+            )
+        except HTTPError as e:
+            return False, f"Ollama returned HTTP {e.code} from {self.base_url}/api/tags"
+        except Exception as e:  # noqa: BLE001
+            return False, f"unexpected error talking to Ollama at {self.base_url}: {e}"
+
+        pulled = {m.get("name", "") for m in (body.get("models") or [])}
+        # Ollama lists models as `name:tag`; users may pass either form.
+        if self.model_id in pulled:
+            return True, "ok"
+        if ":" not in self.model_id and f"{self.model_id}:latest" in pulled:
+            return True, "ok"
+        pulled_summary = ", ".join(sorted(pulled)) or "(none)"
+        return False, (
+            f"Ollama at {self.base_url} is reachable but model "
+            f"{self.model_id!r} is not pulled. Available models: "
+            f"{pulled_summary}. Run `ollama pull {self.model_id}` on the "
+            "Ollama host to fix."
+        )
 
 
 class FakeBackend(EmbeddingBackend):
