@@ -7,9 +7,9 @@ closes that gap by listening for filesystem events and applying targeted
 index updates on the same event loop-agnostic worker thread that watchdog
 provides.
 
-Only `.md` files are tracked. Hidden files and tempfile patterns
-(e.g. `.obsidian/`, `.git/`, `.swp`, `*.tmp`, `.~lock*`) are ignored — they
-produce noise without ever being part of the vault graph.
+Only `.md` files are tracked, and the Vault's ignore predicate is consulted
+on every event so user-defined `ignore:` globs in `.obsidian-mcp/config.yml`
+suppress live updates the same way they suppress scans.
 """
 
 from __future__ import annotations
@@ -27,23 +27,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-IGNORED_DIRS = {".obsidian", ".git", ".trash", ".stversions"}
-
-
-def _is_ignored(rel_path: str) -> bool:
-    """Skip paths under hidden/infra directories, tempfiles, and non-markdown."""
-    parts = Path(rel_path).parts
-    if any(part in IGNORED_DIRS for part in parts):
-        return True
-    if any(part.startswith(".") for part in parts):
-        return True
-    name = Path(rel_path).name
-    if name.endswith((".swp", ".tmp", ".swx")):
-        return True
-    if name.startswith(".~lock"):
-        return True
-    return not name.endswith(".md")
-
 
 class _VaultEventHandler(FileSystemEventHandler):
     """Translate watchdog events into targeted Vault index mutations."""
@@ -57,7 +40,11 @@ class _VaultEventHandler(FileSystemEventHandler):
             rel = str(abs_path.relative_to(self._vault.root))
         except ValueError:
             return None
-        if _is_ignored(rel):
+        # Only `.md` files matter for the index; ignore predicate covers
+        # hidden dirs, tempfiles, and user-defined globs.
+        if not rel.endswith(".md"):
+            return None
+        if self._vault.is_ignored(rel):
             return None
         return rel
 

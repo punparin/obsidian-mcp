@@ -22,6 +22,15 @@ OBSIDIAN_VAULT_PATH=/path/to/vault .venv/bin/python -m obsidian_mcp.server
 - `obsidian_mcp/watcher.py` — `watchdog`-based filesystem watcher that
   keeps the Vault index in sync with out-of-band edits and underpins
   write-conflict detection in `Vault.write_note`.
+- `obsidian_mcp/ignore.py` — `IgnoreMatcher` + `load_ignore_config`. Reads
+  `<vault>/.obsidian-mcp/config.yml` (`ignore:` key, gitignore-style globs)
+  and combines user patterns with always-ignored built-ins (`.obsidian/`,
+  `.git/`, `.trash/`, `.stversions/`, `.obsidian-mcp/`, tempfile suffixes).
+  `Vault.is_ignored(rel_path)` is the single predicate consulted by
+  `_build_index`, `list_notes`, `search_fulltext`, `_reindex_path`,
+  `_enqueue_embed`, the watcher, and `ingest.list_inbox`. Explicit
+  `read_note`/`write_note` bypass the predicate — ignore is "don't
+  surface in scans", not "deny access".
 - `obsidian_mcp/chunker.py` — markdown-aware splitter (H2/H3 sections,
   paragraph packing) for semantic retrieval.
 - `obsidian_mcp/embeddings.py` — backend abstraction (`FastEmbedBackend`,

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .frontmatter import get_body, get_frontmatter, has_frontmatter
+from .ignore import IgnoreMatcher, build_matcher
 from .links import extract_wikilinks, update_wikilinks_across_vault
 
 logger = logging.getLogger(__name__)
@@ -48,10 +49,16 @@ INLINE_TAG_RE = re.compile(r"(?:^|\s)#([a-zA-Z0-9_/-]+)")
 class Vault:
     """Central abstraction for an Obsidian vault."""
 
-    def __init__(self, vault_path: str | Path):
+    def __init__(self, vault_path: str | Path, ignore: IgnoreMatcher | None = None):
         self.root = Path(vault_path).resolve()
         if not self.root.is_dir():
             raise ValueError(f"Vault path does not exist: {self.root}")
+        # Built-ins (`.obsidian/`, `.git/`, our own `.obsidian-mcp/`,
+        # tempfile suffixes) plus user globs from
+        # `<vault>/.obsidian-mcp/config.yml`. `ignore=` is here mostly
+        # for tests to inject a synthetic matcher; production code lets
+        # this default to reading the on-disk config.
+        self._ignore = ignore if ignore is not None else build_matcher(self.root)
         self._index: dict[str, NoteIndex] | None = None
         self._index_lock = threading.RLock()
         # Tracks the disk mtime observed the last time this server handed the
@@ -76,6 +83,26 @@ class Vault:
 
     def _to_relative(self, absolute: Path) -> str:
         return str(absolute.relative_to(self.root))
+
+    # -- Ignore predicate --
+
+    def is_ignored(self, rel_path: str) -> bool:
+        """True if `rel_path` should be skipped during scans/indexing.
+
+        Public so the watcher and ingest paths can consult the same
+        predicate. Explicit reads/writes don't go through this — they
+        operate on whatever path the caller asks for.
+        """
+        return self._ignore.matches(rel_path)
+
+    def _iter_markdown(self, root: Path | None = None):
+        """Yield every non-ignored `.md` file under `root` (default: vault root)."""
+        base = root if root is not None else self.root
+        for md_file in base.rglob("*.md"):
+            rel = self._to_relative(md_file)
+            if self.is_ignored(rel):
+                continue
+            yield md_file
 
     # -- Index --
 
@@ -116,7 +143,7 @@ class Vault:
     def _build_index(self) -> dict[str, NoteIndex]:
         """Scan entire vault and build index."""
         index = {}
-        for md_file in self.root.rglob("*.md"):
+        for md_file in self._iter_markdown():
             rel = self._to_relative(md_file)
             try:
                 index[rel] = self._index_single(rel)
@@ -147,6 +174,8 @@ class Vault:
         decides whether to translate that into a forget_path.
         """
         if (self.root / rel_path).is_dir():
+            return
+        if self.is_ignored(rel_path):
             return
         entry = self._index_single(rel_path)
         with self._index_lock:
@@ -289,7 +318,7 @@ class Vault:
         return self._embed_queue is not None
 
     def _enqueue_embed(self, rel_path: str) -> None:
-        if self._embed_queue is not None:
+        if self._embed_queue is not None and not self.is_ignored(rel_path):
             self._embed_queue.enqueue(rel_path)
 
     def _embed_forget(self, rel_path: str) -> None:
@@ -496,7 +525,7 @@ class Vault:
         search_path = self._resolve_path(folder) if folder else self.root
         if not search_path.is_dir():
             raise FileNotFoundError(f"Folder not found: {folder}")
-        return sorted(self._to_relative(f) for f in search_path.rglob("*.md"))
+        return sorted(self._to_relative(f) for f in self._iter_markdown(search_path))
 
     def delete_note(self, path: str) -> str:
         """Delete a note."""
@@ -559,7 +588,7 @@ class Vault:
         """Full-text search across all notes."""
         results = []
         query_lower = query.lower()
-        for md_file in self.root.rglob("*.md"):
+        for md_file in self._iter_markdown():
             try:
                 content = md_file.read_text(encoding="utf-8")
             except (UnicodeDecodeError, OSError):
