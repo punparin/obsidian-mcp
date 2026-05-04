@@ -237,6 +237,34 @@ Set the vault path via environment variable:
 export OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
 ```
 
+### Ignoring folders / files
+
+By default the server scans every `.md` file in the vault. To keep
+drafts, an archive, or vendored notes out of indexing / search /
+embeddings, drop a config file at `<vault>/.obsidian-mcp/config.yml`:
+
+```yaml
+ignore:
+  - "archive/**"
+  - "private/**"
+  - "drafts/"
+  - "*.tmp.md"
+```
+
+Patterns are gitignore-style globs and are matched against the
+vault-relative path. Built-ins (`.obsidian/`, `.git/`, `.trash/`,
+`.stversions/`, `.obsidian-mcp/`, `*.swp`/`*.tmp`/`*.swx`,
+`.~lock*`) are always ignored regardless of config.
+
+Ignore = "don't surface in scans". Explicit `read_note(path)` /
+`write_note(path)` calls still work on ignored paths so the model can
+poke at them when you ask it to. The same predicate also gates the
+filesystem watcher and the background embed queue, so live edits
+under an ignored folder don't sneak into the index either.
+
+A malformed config fails loudly at startup rather than silently doing
+the wrong thing — fix the YAML or remove the file.
+
 ## Agent Usage Guide
 
 See [`docs/using-with-claude-code.md`](docs/using-with-claude-code.md)

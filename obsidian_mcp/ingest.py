@@ -56,6 +56,8 @@ def list_inbox(vault: "Vault") -> list[dict]:
     items = []
     for f in sorted(inbox.rglob("*.md")):
         rel = str(f.relative_to(vault.root))
+        if vault.is_ignored(rel):
+            continue
         try:
             content = f.read_text(encoding="utf-8")
             preview = content.strip()[:300]
