@@ -31,11 +31,19 @@ runtime the user picks in Step 2.
 Ask the user which agent will host the MCP server. Examples: Claude Code,
 Cursor, Cline, Continue, Goose, Windsurf, something else.
 
-The registration command differs per client. This guide covers
-**Claude Code** in detail (via `claude mcp add`). If the user names a
-different client, fall through to *Step 6 — Manual JSON registration*
-and build a JSON snippet they can paste into their client's MCP config —
-do not invent a CLI for a client you don't know.
+The registration command differs per client:
+
+- **Claude Code:** this guide covers it directly (`claude mcp add` —
+  see Step 6).
+- **Anything else:** you (the agent) are responsible for figuring out
+  that client's MCP registration path. Look up the client's current
+  docs (web search, the client's GitHub README, or context7 if you have
+  it) and apply whatever steps they specify — usually editing a JSON
+  config file or running a CLI. **Confirm what you find with the user
+  before writing any config.**
+- **If you can't find clear, current docs** for the client, fall back
+  to *Step 6 — Path C: Manual JSON* and hand the user a snippet to
+  paste themselves. Do not invent a CLI or guess at a config schema.
 
 ---
 
@@ -247,12 +255,18 @@ claude mcp add -s "$SCOPE" obsidian \
 
 **Confirm the command with the user before running.**
 
-### Path C — Manual JSON for non-Claude-Code clients
+### Path C — Other clients (Cursor, Cline, Goose, …)
 
-If the user's client isn't Claude Code (e.g. Cursor, Cline, Goose),
-print a JSON snippet they can paste into their client's MCP config and
-ask them to confirm where their config file lives — do not write to it
-yourself unless they tell you the exact path.
+First, try the client's own registration path (per Step 1). If you
+*do* know the path — e.g. the user told you the config file location,
+or you found current docs — apply it directly using the same command +
+env values from Path A or Path B. **Always show the user the exact
+config you're about to write and wait for confirmation.**
+
+If you don't know the path, fall through to a manual JSON handoff:
+print the snippet below with the user's answers substituted, and ask
+them to paste it into their client's MCP config file. Do not write to
+unknown paths yourself.
 
 For Docker:
 
