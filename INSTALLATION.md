@@ -13,19 +13,16 @@
 
 ---
 
-## Step 0 — Confirm the host
+## Step 0 — Confirm the host OS
 
-Before anything else, run these and report the results to the user:
+Run this and report the result:
 
 ```sh
 uname -s             # Linux / Darwin / (WSL on Windows)
-docker --version     # may fail — that's fine, we'll branch on it
-python3 --version    # need 3.11+ for the local install path
 ```
 
-If `docker` is not installed AND `python3` is older than 3.11, **stop and
-ask the user to install one of them** before continuing. Do not try to
-install Docker or upgrade Python yourself.
+Don't probe for Docker or Python yet — which one matters depends on the
+runtime the user picks in Step 2.
 
 ---
 
@@ -42,10 +39,43 @@ do not invent a CLI for a client you don't know.
 
 ---
 
-## Step 2 — Ask: where is the Obsidian vault?
+## Step 2 — Ask: which runtime?
 
-Required. **Do not guess this.** Common locations the user might mention
-(`~/Documents/Obsidian`, `~/Notes`, `~/vault`) are hints, not defaults.
+Ask this **before** anything else, because it decides which prerequisite
+the user actually needs. **Recommend Docker** — it's slim, has no Python
+deps to manage, and is the default install path.
+
+| Option | When to use | What you'll need |
+|---|---|---|
+| **A. Docker** *(recommended)* | Default. Works as long as Docker is running. | `docker` available |
+| **B. Local virtualenv** | User explicitly wants a Python install (e.g. no Docker, or wants to hack on the source). | Python 3.11+, `git` |
+
+Phrase it: *"Do you want the Docker install (recommended — no Python
+needed) or a local Python install? Pick Docker unless you have a
+reason not to."*
+
+Save the answer as `RUNTIME` ∈ {`docker`, `local`}.
+
+### 2a. Verify the prerequisite for the chosen runtime
+
+Only check the tool the user actually needs:
+
+- **`RUNTIME=docker`:** run `docker --version`. If it fails, **stop**
+  and tell the user Docker isn't installed or isn't on `PATH`. Ask
+  whether they want to install Docker or switch to the local runtime.
+  Do not try to install Docker yourself.
+- **`RUNTIME=local`:** run `python3 --version`. If the version is older
+  than 3.11, **stop** and tell the user. Ask whether they want to
+  upgrade Python or switch to Docker. Do not try to upgrade Python
+  yourself. Also confirm `git --version` works.
+
+---
+
+## Step 3 — Ask: where is the Obsidian vault?
+
+Required for both runtimes. **Do not guess this.** Common locations the
+user might mention (`~/Documents/Obsidian`, `~/Notes`, `~/vault`) are
+hints, not defaults.
 
 Prompt:
 
@@ -63,22 +93,6 @@ If `MISSING`, ask the user to confirm the path is correct before moving
 on. Don't proceed on a path that doesn't look like a vault.
 
 Save the answer as `VAULT_PATH`.
-
----
-
-## Step 3 — Ask: which runtime?
-
-Two install paths. Ask the user to pick one:
-
-| Option | When to use | What you'll need |
-|---|---|---|
-| **A. Docker** *(recommended)* | The user has Docker running. Slim, no Python deps to manage. | `docker` available |
-| **B. Local virtualenv** | No Docker, or user prefers a Python install. | Python 3.11+, `git` |
-
-If `docker --version` failed in Step 0, surface that and recommend option
-B. If both work, ask the user to pick.
-
-Save the answer as `RUNTIME` ∈ {`docker`, `local`}.
 
 ---
 
@@ -128,7 +142,7 @@ Save the answer as `EMBEDDER` ∈ {`ollama`, `fastembed`, `none`}.
 
 The default Docker image does **not** include `fastembed`. Tell the
 user: *"The Docker image ships without fastembed. Switch to `ollama`,
-`none`, or use the local runtime to keep fastembed."* Re-ask Step 3 or
+`none`, or use the local runtime to keep fastembed."* Re-ask Step 2 or
 Step 4 based on what they want.
 
 ### 4c. If `EMBEDDER=none`
@@ -303,7 +317,7 @@ Ask: *"Do you want the browser-based Vault Explorer too? It runs
 alongside the MCP server on port 8765 and is useful for debugging which
 notes the agent finds and why."*
 
-If yes, mirror the runtime choice from Step 3:
+If yes, mirror the runtime choice from Step 2:
 
 - **Docker:**
   ```sh
