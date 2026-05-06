@@ -101,12 +101,21 @@ Save the answer as `VAULT_PATH`.
 The server has three embedding backends. Ask the user:
 
 > *"Do you want semantic search over your vault? Three options:*
-> *1. **`ollama`** — recommended if you already run an [Ollama](https://ollama.com)*
->    *server (e.g. on a desktop GPU box). Best quality, slim install.*
-> *2. **`fastembed`** — in-process embedding, downloads ~130 MB on first*
->    *use. Single-host, no extra service needed. Local-only.*
+> *1. **`ollama` (recommended)** — best quality. Run [Ollama](https://ollama.com)*
+>    *locally (`ollama serve`) or on another box on your LAN, and use*
+>    *`qwen3-embedding` as the model. SOTA quality on MTEB, strong*
+>    *multilingual.*
+> *2. **`fastembed`** — fully self-contained Python install, downloads*
+>    *~130 MB `BAAI/bge-small-en-v1.5` on first use. English-only,*
+>    *lower quality than qwen3. Pick this only if you don't want to run*
+>    *Ollama at all.*
 > *3. **`none`** — skip semantic features; only lexical search and graph*
 >    *tools work."*
+
+If the user has no Ollama yet but is open to running it locally, point
+them at the `ollama serve` quickstart and recommend `qwen3-embedding:4b`
+as the default model (good quality, modest disk/RAM). Wait for them to
+confirm Ollama is up before continuing.
 
 Save the answer as `EMBEDDER` ∈ {`ollama`, `fastembed`, `none`}.
 
@@ -122,12 +131,17 @@ Save the answer as `EMBEDDER` ∈ {`ollama`, `fastembed`, `none`}.
   If `UNREACHABLE`, ask the user to confirm the URL or start Ollama
   before continuing. Don't proceed.
 
-- **Embedding model.** Prompt: *"Which embedding model? Options that show
-  up in `ollama list` on your server. Common picks: `qwen3-embedding:8b`
-  (best, ~16 KB/vector), `qwen3-embedding:4b` (sweet spot), `bge-m3`
-  (lightweight multilingual), `nomic-embed-text` (small, fast). If
-  unsure, `qwen3-embedding:4b` is a safe default — confirm with me
-  before I use it."* Save as `EMBEDDER_MODEL`.
+- **Embedding model.** Prompt: *"Which embedding model? Recommended:
+  **`qwen3-embedding:4b`** — best quality/storage trade-off, strong
+  multilingual support (Thai/Chinese/Japanese). Other picks:
+  `qwen3-embedding:8b` (top quality, ~16 KB/vector), `bge-m3`
+  (lightweight multilingual), `nomic-embed-text` (small, fast). I'll
+  use `qwen3-embedding:4b` unless you say otherwise — confirm or pick
+  another."* Save as `EMBEDDER_MODEL`.
+
+  If the model isn't on the Ollama host yet, tell the user to run
+  `ollama pull qwen3-embedding:4b` (or whichever they picked) on the
+  Ollama box. Wait for confirmation before moving on.
 
   Verify the model exists on the server:
   ```sh
