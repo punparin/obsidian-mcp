@@ -2,6 +2,8 @@
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that gives any MCP-capable agent (Claude Code, Cursor, Cline, Continue, Goose, Windsurf, …) full read/write access to an Obsidian vault. Built with [FastMCP](https://github.com/jlowin/fastmcp).
 
+![demo](docs/demo.gif)
+
 ## Install via your agent (easiest)
 
 Open your MCP-capable agent (Claude Code, Cursor, Cline, …), paste:
