@@ -102,6 +102,42 @@ on. Don't proceed on a path that doesn't look like a vault.
 
 Save the answer as `VAULT_PATH`.
 
+### 3a. Ask: any folders or files to ignore?
+
+Before the server runs and starts indexing/embedding, give the user a
+chance to scope it down. Ask:
+
+> *"Are there any folders or files inside the vault you want me to
+> exclude from indexing, search, and embeddings? Common picks: an*
+> *`archive/` folder, `private/` or `journal/` for personal stuff,*
+> *`drafts/`, `*.tmp.md` files. Leave blank to index everything (the*
+> *built-in `.obsidian/`, `.git/`, `.trash/`, and `.obsidian-mcp/`*
+> *folders are always ignored regardless)."*
+
+Patterns are gitignore-style globs, matched against the vault-relative
+path. If the user gives any patterns, write them to
+`<VAULT_PATH>/.obsidian-mcp/config.yml`:
+
+```yaml
+ignore:
+  - "archive/**"
+  - "private/**"
+  - "*.tmp.md"
+```
+
+**Show the user the YAML you're about to write and ask for
+confirmation** before creating the file. If `<VAULT_PATH>/.obsidian-mcp/`
+doesn't exist yet, `mkdir -p` it first. If the file already exists,
+read it, ask whether to merge or replace, and don't clobber silently.
+
+Note: ignore = "don't surface in scans". Explicit `read_note(path)` /
+`write_note(path)` calls still work on ignored paths so the agent can
+poke at them when the user asks. A malformed YAML config fails loudly
+at server startup, so any typo will be caught early.
+
+If the user says no, skip this — the server will index the whole
+vault.
+
 ---
 
 ## Step 4 — Ask: semantic search?
