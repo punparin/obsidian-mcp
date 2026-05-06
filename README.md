@@ -2,6 +2,18 @@
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that gives any MCP-capable agent (Claude Code, Cursor, Cline, Continue, Goose, Windsurf, …) full read/write access to an Obsidian vault. Built with [FastMCP](https://github.com/jlowin/fastmcp).
 
+## Install via your agent (easiest)
+
+Open your MCP-capable agent (Claude Code, Cursor, Cline, …), paste:
+
+> Read this and help me install it: <https://github.com/punparin/obsidian-mcp/blob/main/INSTALLATION.md>
+
+The agent will walk you through it — picking Docker vs Python, vault
+path, semantic-search backend, scope — and ask before assuming
+anything. See [`INSTALLATION.md`](./INSTALLATION.md) for the full guide.
+
+Prefer to do it by hand? Keep reading.
+
 ## Quickstart
 
 ```bash
