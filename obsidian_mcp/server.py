@@ -7,6 +7,7 @@ import sys
 
 from fastmcp import FastMCP
 
+from .agent_instructions import INSTRUCTIONS as _AGENT_INSTRUCTIONS
 from .frontmatter import get_frontmatter as _get_fm
 from .frontmatter import update_frontmatter as _update_fm
 from .ingest import (
@@ -42,7 +43,6 @@ from .schema import (
 from .schema import (
     validate_vault_schema as _validate_vault,
 )
-from .agent_instructions import INSTRUCTIONS as _AGENT_INSTRUCTIONS
 from .templates import create_from_template as _from_template
 from .vault import Vault
 
