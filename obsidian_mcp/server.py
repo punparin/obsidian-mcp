@@ -7,6 +7,7 @@ import sys
 
 from fastmcp import FastMCP
 
+from .agent_instructions import INSTRUCTIONS as _AGENT_INSTRUCTIONS
 from .frontmatter import get_frontmatter as _get_fm
 from .frontmatter import update_frontmatter as _update_fm
 from .ingest import (
@@ -70,7 +71,7 @@ try:
         logger.info("semantic retrieval disabled")
 except Exception:
     logger.exception("failed to enable semantic retrieval; continuing without it")
-mcp = FastMCP("obsidian")
+mcp = FastMCP("obsidian", instructions=_AGENT_INSTRUCTIONS)
 
 
 # ── Core File Operations ──────────────────────────────────────────────
