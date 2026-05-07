@@ -138,6 +138,7 @@ def rank(
     knn_k: int = DEFAULT_KNN_K,
     exclude_path: str | None = None,
     weights: dict[str, float] | None = None,
+    path_prefix: str | None = None,
 ) -> list[dict]:
     """Embed ``query_text``, retrieve candidate chunks, aggregate to notes,
     graph-rescore, and return ``limit`` ranked notes.
@@ -150,6 +151,10 @@ def rank(
     ``weights`` overrides any of ``sem``/``link``/``tag``/``neighbor``/
     ``recency`` for this call (e.g. for live demos that tune weights
     per-request); unspecified keys fall back to env-tuned defaults.
+
+    ``path_prefix`` (e.g. ``"projects/"``) drops candidates outside the
+    subtree before re-ranking. Already-normalized — caller must include
+    the trailing slash.
     """
     if not query_text.strip():
         return []
@@ -172,6 +177,8 @@ def rank(
     for h in hits:
         path = h["path"]
         if exclude_path and path == exclude_path:
+            continue
+        if path_prefix and not path.startswith(path_prefix):
             continue
         existing = best_chunk_by_path.get(path)
         if existing is None or h["distance"] < existing["distance"]:

@@ -84,6 +84,20 @@ class Vault:
     def _to_relative(self, absolute: Path) -> str:
         return str(absolute.relative_to(self.root))
 
+    def _normalize_subtree(self, path: str) -> str:
+        """Validate `path` stays inside the vault and return a clean prefix.
+
+        Empty input returns empty string (match-all). Otherwise resolves
+        against the vault root (rejecting `..` escapes) and returns the
+        relative path with a trailing slash so prefix-match doesn't bite
+        on similarly-named folders (e.g. 'a/b' must not match 'a/bc').
+        """
+        if not path:
+            return ""
+        # Validates against `..` escapes
+        self._resolve_path(path)
+        return path.rstrip("/") + "/"
+
     # -- Ignore predicate --
 
     def is_ignored(self, rel_path: str) -> bool:
@@ -365,20 +379,25 @@ class Vault:
         query: str,
         k: int = 10,
         weights: dict[str, float] | None = None,
+        path: str = "",
     ) -> list[dict]:
         """Vault-facing facade used by the MCP tool; empty list if disabled.
 
         ``weights`` lets callers (e.g. the demo UI) override re-rank
         weights for a single query without mutating env vars.
+
+        ``path`` (optional) scopes results to a subtree of the vault —
+        e.g. ``"projects/"`` to only return notes under that folder.
         """
         if not self.semantic_enabled:
             return []
         from .semantic import rank
 
         assert self._vector_store is not None and self._embedder is not None
+        prefix = self._normalize_subtree(path)
         return rank(
             self, self._vector_store, self._embedder, query,
-            limit=k, weights=weights,
+            limit=k, weights=weights, path_prefix=prefix or None,
         )
 
     # -- Auto-link suggestions --
@@ -584,11 +603,16 @@ class Vault:
 
     # -- Search --
 
-    def search_fulltext(self, query: str, limit: int = 50) -> list[dict]:
-        """Full-text search across all notes."""
+    def search_fulltext(self, query: str, limit: int = 50, path: str = "") -> list[dict]:
+        """Full-text search across all notes.
+
+        ``path`` (optional) scopes the walk to a subtree of the vault —
+        e.g. ``"projects/"`` to only search under that folder.
+        """
         results = []
         query_lower = query.lower()
-        for md_file in self._iter_markdown():
+        root = self._resolve_path(path) if path else None
+        for md_file in self._iter_markdown(root):
             try:
                 content = md_file.read_text(encoding="utf-8")
             except (UnicodeDecodeError, OSError):
@@ -606,43 +630,56 @@ class Vault:
                 break
         return results
 
-    def search_by_tags(self, tags: list[str]) -> list[dict]:
-        """Find notes with specific tags."""
+    def search_by_tags(self, tags: list[str], path: str = "") -> list[dict]:
+        """Find notes with specific tags. ``path`` scopes to a subtree."""
         tags_lower = [t.lstrip("#").lower() for t in tags]
+        prefix = self._normalize_subtree(path)
         results = []
-        for path, note in self.index.items():
+        for p, note in self.index.items():
+            if prefix and not p.startswith(prefix):
+                continue
             note_tags = [t.lower() for t in note.tags]
             if any(t in note_tags for t in tags_lower):
-                results.append({"path": path, "title": note.title, "tags": note.tags})
+                results.append({"path": p, "title": note.title, "tags": note.tags})
         return results
 
-    def search_by_frontmatter(self, key: str, value: str) -> list[dict]:
-        """Find notes where a frontmatter property matches a value."""
+    def search_by_frontmatter(self, key: str, value: str, path: str = "") -> list[dict]:
+        """Find notes where a frontmatter property matches a value.
+
+        ``path`` (optional) scopes to a subtree.
+        """
         value_lower = value.lower()
+        prefix = self._normalize_subtree(path)
         results = []
-        for path, note in self.index.items():
+        for p, note in self.index.items():
+            if prefix and not p.startswith(prefix):
+                continue
             fm_value = note.frontmatter.get(key)
             if fm_value is None:
                 continue
             if isinstance(fm_value, list):
                 if any(value_lower in str(v).lower() for v in fm_value):
-                    results.append({"path": path, "title": note.title, key: fm_value})
+                    results.append({"path": p, "title": note.title, key: fm_value})
             elif value_lower in str(fm_value).lower():
-                results.append({"path": path, "title": note.title, key: fm_value})
+                results.append({"path": p, "title": note.title, key: fm_value})
         return results
 
     def search_by_date_range(
-        self, start: str, end: str, date_field: str = "modified"
+        self, start: str, end: str, date_field: str = "modified", path: str = ""
     ) -> list[dict]:
         """Find notes within a date range.
 
         date_field: 'modified' uses file mtime, anything else uses frontmatter.
+        ``path`` (optional) scopes to a subtree.
         """
         start_date = date.fromisoformat(start)
         end_date = date.fromisoformat(end)
+        prefix = self._normalize_subtree(path)
         results = []
 
-        for path, note in self.index.items():
+        for p, note in self.index.items():
+            if prefix and not p.startswith(prefix):
+                continue
             if date_field == "modified":
                 note_date = date.fromisoformat(note.modified[:10])
             else:
@@ -655,7 +692,7 @@ class Vault:
                     continue
 
             if start_date <= note_date <= end_date:
-                results.append({"path": path, "title": note.title, date_field: str(note_date)})
+                results.append({"path": p, "title": note.title, date_field: str(note_date)})
 
         return results
 

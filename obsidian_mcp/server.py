@@ -122,30 +122,42 @@ async def move_note(source: str, destination: str) -> str:
 
 
 @mcp.tool()
-async def search(query: str, limit: int = 50) -> str:
-    """Full-text search across all notes. Returns matching notes with path, line number, and context."""
-    results = vault.search_fulltext(query, limit)
+async def search(query: str, limit: int = 50, path: str = "") -> str:
+    """Full-text search across all notes. Returns matching notes with path, line number, and context.
+
+    Pass `path` (e.g. "projects/") to scope the search to a subtree of the vault.
+    """
+    results = vault.search_fulltext(query, limit, path=path)
     return json.dumps(results, indent=2) if results else "No matches found."
 
 
 @mcp.tool()
-async def search_by_tags(tags: list[str]) -> str:
-    """Find notes with specific tags (from frontmatter or inline #tags)."""
-    results = vault.search_by_tags(tags)
+async def search_by_tags(tags: list[str], path: str = "") -> str:
+    """Find notes with specific tags (from frontmatter or inline #tags).
+
+    Pass `path` (e.g. "projects/") to scope to a subtree of the vault.
+    """
+    results = vault.search_by_tags(tags, path=path)
     return json.dumps(results, indent=2) if results else "No notes with those tags."
 
 
 @mcp.tool()
-async def search_by_frontmatter(key: str, value: str) -> str:
-    """Find notes where a frontmatter property matches a value. Supports partial matching."""
-    results = vault.search_by_frontmatter(key, value)
+async def search_by_frontmatter(key: str, value: str, path: str = "") -> str:
+    """Find notes where a frontmatter property matches a value. Supports partial matching.
+
+    Pass `path` (e.g. "projects/") to scope to a subtree of the vault.
+    """
+    results = vault.search_by_frontmatter(key, value, path=path)
     return json.dumps(results, indent=2) if results else "No matching notes."
 
 
 @mcp.tool()
-async def search_by_date_range(start_date: str, end_date: str, date_field: str = "modified") -> str:
-    """Find notes within a date range. date_field can be 'modified' (file mtime) or any frontmatter date field."""
-    results = vault.search_by_date_range(start_date, end_date, date_field)
+async def search_by_date_range(start_date: str, end_date: str, date_field: str = "modified", path: str = "") -> str:
+    """Find notes within a date range. date_field can be 'modified' (file mtime) or any frontmatter date field.
+
+    Pass `path` (e.g. "projects/") to scope to a subtree of the vault.
+    """
+    results = vault.search_by_date_range(start_date, end_date, date_field, path=path)
     return json.dumps(results, indent=2) if results else "No notes in that date range."
 
 
@@ -333,17 +345,19 @@ async def archive_inbox_note(path: str) -> str:
 
 
 @mcp.tool()
-async def semantic_search(query: str, k: int = 10) -> str:
+async def semantic_search(query: str, k: int = 10, path: str = "") -> str:
     """Embedding-based search with graph-aware re-rank.
 
     Returns ranked notes with score breakdown (cos_sim, wikilink match,
     tag overlap, neighbor distance, recency). Use this when the user's
     intent is semantic ("what notes are about X?") rather than an exact
     string lookup — for exact matches, use `search`.
+
+    Pass `path` (e.g. "projects/") to scope to a subtree of the vault.
     """
     if not vault.semantic_enabled:
         return "Semantic retrieval disabled (set OBSIDIAN_EMBEDDER to enable)."
-    results = vault.semantic_search(query, k=k)
+    results = vault.semantic_search(query, k=k, path=path)
     if not results:
         return "No results."
     return json.dumps(results, indent=2, default=str)
