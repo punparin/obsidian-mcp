@@ -67,8 +67,6 @@ auto-link suggestions? Run the [Explorer](./docs/explorer.md) sidecar.
   re-rank formula, embedder selection, auto-link suggestions
 - [`docs/conventions.md`](./docs/conventions.md) — frontmatter and
   template patterns
-- [`docs/self-maintaining-wiki.md`](./docs/self-maintaining-wiki.md)
-  — Karpathy-inspired lint + schema + ingest loop
 - [`docs/explorer.md`](./docs/explorer.md) — Vault Explorer browser
   UI for debugging retrieval and visualizing the graph
 - [`docs/using-with-claude-code.md`](./docs/using-with-claude-code.md)

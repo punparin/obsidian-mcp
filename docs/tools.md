@@ -1,7 +1,7 @@
 # Tool Reference
 
 **33 tools + 2 auto-loaded resources** for complete vault management,
-self-maintaining knowledge wiki, and semantic retrieval.
+lint / schema / ingest workflows, and semantic retrieval.
 
 | Group | Tool | Description |
 |---|---|---|
