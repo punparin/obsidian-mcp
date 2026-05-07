@@ -64,6 +64,10 @@ If they're describing a concept, use `semantic_search`. If there's a
 data structure to filter on (tag, date, frontmatter key), use the
 structured tool.
 
+If the likely location is already known (e.g. "in projects/"), every
+search tool above accepts a `path` parameter that scopes the walk to
+a subtree. Faster, and cuts noise from unrelated folders.
+
 ### Discovery flow
 
 When asked "is there a note about X already?":

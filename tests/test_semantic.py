@@ -67,6 +67,19 @@ class TestExactChunkRetrieval:
         assert "wikilink_match" in first["signals"]
         assert "tag_jaccard" in first["signals"]
 
+    def test_path_scope_filters_results(self, sem_vault):
+        # The fixture has note3 only under subfolder/. With path="subfolder",
+        # other root-level notes should drop out even if their cos_sim is higher.
+        scoped = sem_vault.semantic_search("note", k=10, path="subfolder")
+        paths = [r["path"] for r in scoped]
+        assert paths, "expected at least one result inside subfolder/"
+        for p in paths:
+            assert p.startswith("subfolder/"), p
+
+    def test_path_scope_rejects_escape(self, sem_vault):
+        with pytest.raises(ValueError):
+            sem_vault.semantic_search("note", k=5, path="../escape")
+
 
 class TestWriteTriggersEmbed:
     def test_new_note_becomes_searchable(self, sem_vault, tmp_vault):

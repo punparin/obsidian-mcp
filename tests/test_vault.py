@@ -164,6 +164,15 @@ class TestSearchFulltext:
     def test_no_match(self, vault):
         assert vault.search_fulltext("zzz_nonexistent") == []
 
+    def test_path_scope_includes_subtree(self, vault):
+        # "Note Three" lives only under subfolder/
+        results = vault.search_fulltext("Note Three", path="subfolder")
+        assert any(r["path"] == "subfolder/note3.md" for r in results)
+
+    def test_path_scope_excludes_outside(self, vault):
+        # "First paragraph" is in note1.md at the vault root, not in subfolder/
+        assert vault.search_fulltext("First paragraph", path="subfolder") == []
+
 
 class TestSearchByTags:
     def test_finds_by_tag(self, vault):
@@ -178,6 +187,14 @@ class TestSearchByTags:
         results = vault.search_by_tags(["#project"])
         assert any(r["path"] == "note1.md" for r in results)
 
+    def test_path_scope_includes_subtree(self, vault):
+        results = vault.search_by_tags(["inline-tag"], path="subfolder")
+        assert any(r["path"] == "subfolder/note3.md" for r in results)
+
+    def test_path_scope_excludes_outside(self, vault):
+        # `project` tag only on note1.md at vault root
+        assert vault.search_by_tags(["project"], path="subfolder") == []
+
 
 class TestSearchByFrontmatter:
     def test_exact_match(self, vault):
@@ -188,6 +205,35 @@ class TestSearchByFrontmatter:
     def test_partial_match(self, vault):
         results = vault.search_by_frontmatter("title", "Note")
         assert len(results) >= 2
+
+    def test_path_scope_excludes_outside(self, vault):
+        # note1.md has frontmatter title; subfolder has no frontmatter notes
+        assert vault.search_by_frontmatter("title", "Note", path="subfolder") == []
+
+
+class TestSubtreeNormalization:
+    def test_rejects_path_escape(self, vault):
+        with pytest.raises(ValueError):
+            vault.search_by_tags(["project"], path="../escape")
+
+    def test_trailing_slash_optional(self, vault):
+        # Both "subfolder" and "subfolder/" should match the same notes
+        a = vault.search_by_tags(["inline-tag"], path="subfolder")
+        b = vault.search_by_tags(["inline-tag"], path="subfolder/")
+        assert a == b
+
+    def test_doesnt_overmatch_similar_folders(self, vault, tmp_vault):
+        # Create subfolder-extra/ next to subfolder/ — the prefix
+        # "subfolder" must not match "subfolder-extra/note.md".
+        (tmp_vault / "subfolder-extra").mkdir()
+        (tmp_vault / "subfolder-extra" / "note.md").write_text(
+            "---\ntags: [inline-tag]\n---\nbody\n"
+        )
+        v = type(vault)(tmp_vault)
+        results = v.search_by_tags(["inline-tag"], path="subfolder")
+        paths = [r["path"] for r in results]
+        assert "subfolder/note3.md" in paths
+        assert "subfolder-extra/note.md" not in paths
 
 
 class TestSearchByDateRange:
