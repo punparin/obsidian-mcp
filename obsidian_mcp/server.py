@@ -153,12 +153,24 @@ async def search_by_tags(tags: list[str], path: str = "") -> str:
 
 
 @mcp.tool()
-async def search_by_frontmatter(key: str, value: str, path: str = "") -> str:
-    """Find notes where a frontmatter property matches a value. Supports partial matching.
+async def search_by_frontmatter(
+    key: str = "",
+    value: str = "",
+    path: str = "",
+    filters: dict[str, str] | None = None,
+) -> str:
+    """Find notes where frontmatter properties match (case-insensitive substring).
+
+    Single-field: pass `key` and `value` (e.g. key="status", value="draft").
+    Multi-field (AND): pass `filters` as an object, e.g.
+    `{"status": "draft", "type": "weekly"}` — every pair must match.
+    When both are passed, `filters` is authoritative.
 
     Pass `path` (e.g. "projects/") to scope to a subtree of the vault.
     """
-    results = vault.search_by_frontmatter(key, value, path=path)
+    results = vault.search_by_frontmatter(
+        key=key, value=value, path=path, filters=filters
+    )
     return json.dumps(results, indent=2) if results else "No matching notes."
 
 
