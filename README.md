@@ -51,6 +51,11 @@ validation, ingest workflow, and auto-link suggestions.
 
 See [`docs/tools.md`](./docs/tools.md) for the full reference.
 
+Want to debug retrieval, see the wikilink graph live, or surface
+auto-link suggestions? Run the [Explorer](./docs/explorer.md) sidecar.
+
+![Explorer demo](./docs/explorer-demo.gif)
+
 ## Documentation
 
 - [`docs/architecture.md`](./docs/architecture.md) — components, tool
