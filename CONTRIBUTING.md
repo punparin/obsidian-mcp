@@ -60,7 +60,7 @@ Include "Closes #N" if it fixes an open issue. Skip the AI-coauthor footers — 
 
 - **Tests for new behavior.** Especially in `semantic.py`, `suggest.py`, `vector_store.py`, `links.py` — these are the parts where regressions are easiest to introduce and hardest to spot.
 - **One logical change per PR.** A bug fix doesn't need surrounding cleanup; a new tool doesn't need to refactor the watcher. Two changes → two PRs.
-- **No new config knobs without docs.** If you're adding an env var, document it in `README.md` + the Tuning / Operational notes sections of `AGENT.md`. If you're adding or renaming a tool argument that agents must reach for correctly, update `obsidian_mcp/agent_instructions.py` — that's the runtime payload the server injects via MCP `instructions`.
+- **No new config knobs without docs.** If you're adding an env var, document it in `README.md`. If you're adding or renaming a tool argument that agents must reach for correctly, update `obsidian_mcp/agent_instructions.py` — that's the runtime payload the server injects via MCP `instructions`.
 - **For Explorer UI changes**, drop a screenshot or short clip in the PR.
 
 ## Releases
