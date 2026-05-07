@@ -1,33 +1,51 @@
-# Using Obsidian MCP With Claude Code
+# AGENT.md
 
-Guidance for Claude Code — and the humans configuring it — on how to use
-this MCP effectively. Drop the rules section into your vault's
-`CLAUDE.md` (or `~/.claude/CLAUDE.md` if the vault is your only Obsidian
-setup) so Claude picks them up on every session.
+Guidance for any MCP-capable agent (Claude Code, Cursor, Cline,
+Continue, Goose, Windsurf, …) on how to use **obsidian-mcp**
+effectively.
 
-## TL;DR rules to paste into CLAUDE.md
+Two ways to wire this up:
+
+1. **Agents that auto-load `AGENT.md` / `AGENTS.md` / `CLAUDE.md`** —
+   drop a copy of the [system-prompt block](#system-prompt-block) into
+   your vault's agent file (e.g. `<vault>/AGENT.md` or
+   `~/.claude/CLAUDE.md`). The agent picks it up every session.
+2. **Agents configured via explicit system prompt** — paste the same
+   block into your agent's prompt config.
+
+The architecture / running notes at the bottom are for contributors
+working in *this* repo.
+
+## System-prompt block
+
+Paste the section below verbatim into your agent's system prompt or
+project-level rules file:
 
 ```markdown
 ## Obsidian MCP
 
-- Use `semantic_search` for conceptual queries ("what did I think about
-  X?", "anything about retrieval-augmented generation"). Use `search`
-  for exact strings — quoted phrases, error messages, code snippets,
-  filenames, inline `#tags`.
-- `.obsidian-mcp/` at the vault root is a local vector index cache. Do
-  not read, edit, or commit files under it. It regenerates itself.
+You have access to obsidian-mcp, an MCP server with read/write access
+to an Obsidian vault. Follow these rules:
+
+- Use `semantic_search` for conceptual queries ("what did I think
+  about X?", "anything about retrieval-augmented generation"). Use
+  `search` for exact strings — quoted phrases, error messages, code
+  snippets, filenames, inline `#tags`.
+- `.obsidian-mcp/` at the vault root is a local vector index cache.
+  Do not read, edit, or commit files under it. It regenerates itself.
 - After renaming a note, the vault already updates wikilinks. Don't
   hand-edit references; call `move_note` instead.
-- `write_note` refuses to clobber a note edited on disk since the last
-  `read_note` on the same path. Re-read before overwriting, or pass
-  `force=True` only when you mean it.
-- The ingest flow is `list_inbox` → `read_note` → `find_related_notes`
-  → update related notes → `archive_inbox_note`. Don't delete inbox
-  notes; archive them so the source stays recoverable.
+- `write_note` refuses to clobber a note edited on disk since the
+  last `read_note` on the same path. Re-read before overwriting, or
+  pass `force=True` only when you mean it.
+- The ingest flow is `list_inbox` → `read_note` →
+  `find_related_notes` → update related notes → `archive_inbox_note`.
+  Don't delete inbox notes; archive them so the source stays
+  recoverable.
 - `suggest_links` finds note pairs that look related but aren't
   wikilinked. Use `apply_link_suggestion(source, target)` to add a
-  `See also: [[target]]` (idempotent), or `dismiss_link_suggestion` to
-  hide a pair permanently. Don't bulk-apply — review each one.
+  `See also: [[target]]` (idempotent), or `dismiss_link_suggestion`
+  to hide a pair permanently. Don't bulk-apply — review each one.
 ```
 
 ## When to use each tool
@@ -67,9 +85,9 @@ When asked "is there a note about X already?":
    fresh `write_note` is fine (no conflict check needed).
 3. For appends, prefer `append_note` — it's additive and won't trip
    the conflict check.
-4. After moving, use `move_note` (it auto-updates `[[wikilinks]]` across
-   the vault). Manual rename + hand-editing references will leave the
-   index and wikilinks inconsistent until the next reindex.
+4. After moving, use `move_note` (it auto-updates `[[wikilinks]]`
+   across the vault). Manual rename + hand-editing references will
+   leave the index and wikilinks inconsistent until the next reindex.
 
 ### Ingest flow
 
@@ -135,8 +153,8 @@ Each result includes a score breakdown:
 ```
 
 - `cos_sim` near 1.0 → strong semantic match on the chunk body.
-- `wikilink_match: true` → the query explicitly `[[linked]]` this note
-  (very high confidence it's the target).
+- `wikilink_match: true` → the query explicitly `[[linked]]` this
+  note (very high confidence it's the target).
 - `tag_jaccard` → overlap of `#tags` in query vs note.
 - `neighbor_hops: 1` → direct wikilink neighbor of a query-mentioned
   note. `2` → two hops away. Missing → unrelated in the graph.
@@ -159,7 +177,7 @@ explicit graph over raw semantic similarity:
 | `OBSIDIAN_W_RECENCY` | 0.10 | recency decay |
 
 Lower `W_LINK` + `W_TAG` if you want results to feel more exploratory
-and less "Claude keeps surfacing the same explicitly-linked notes."
+and less "the agent keeps surfacing the same explicitly-linked notes."
 
 ## Operational notes
 
@@ -188,10 +206,90 @@ and less "Claude keeps surfacing the same explicitly-linked notes."
 read_note(p)          → records disk mtime
 user edits p in Obsidian
 write_note(p, …)      → NoteConflictError (mtime advanced)
-→ Claude should re-read, merge, retry
+→ agent should re-read, merge, retry
 → or pass force=True to overwrite deliberately
 ```
 
 The check only kicks in when the MCP has *previously* handed the
 content of `p` to the model. First-time creates and template-based
 writes are unaffected.
+
+---
+
+# Contributing to this repo
+
+Everything below is for contributors working in this codebase, not
+for end-users wiring an agent against it.
+
+## Running
+
+```bash
+OBSIDIAN_VAULT_PATH=/path/to/vault .venv/bin/python -m obsidian_mcp.server
+```
+
+## Testing
+
+```bash
+.venv/bin/pytest tests/ -v
+```
+
+## Architecture
+
+- `obsidian_mcp/server.py` — FastMCP server, tool/resource definitions
+- `obsidian_mcp/vault.py` — Vault class, file ops, indexing, search
+- `obsidian_mcp/frontmatter.py` — YAML frontmatter parsing/updating
+- `obsidian_mcp/links.py` — Wikilink extraction, backlinks, graph
+- `obsidian_mcp/templates.py` — Template expansion with {{variables}}
+- `obsidian_mcp/watcher.py` — `watchdog`-based filesystem watcher that
+  keeps the Vault index in sync with out-of-band edits and underpins
+  write-conflict detection in `Vault.write_note`.
+- `obsidian_mcp/ignore.py` — `IgnoreMatcher` + `load_ignore_config`.
+  Reads `<vault>/.obsidian-mcp/config.yml` (`ignore:` key,
+  gitignore-style globs) and combines user patterns with
+  always-ignored built-ins (`.obsidian/`, `.git/`, `.trash/`,
+  `.stversions/`, `.obsidian-mcp/`, tempfile suffixes).
+  `Vault.is_ignored(rel_path)` is the single predicate consulted by
+  `_build_index`, `list_notes`, `search_fulltext`, `_reindex_path`,
+  `_enqueue_embed`, the watcher, and `ingest.list_inbox`. Explicit
+  `read_note`/`write_note` bypass the predicate — ignore is "don't
+  surface in scans", not "deny access".
+- `obsidian_mcp/chunker.py` — markdown-aware splitter (H2/H3
+  sections, paragraph packing) for semantic retrieval.
+- `obsidian_mcp/embeddings.py` — backend abstraction
+  (`FastEmbedBackend`, `OllamaBackend` for remote inference,
+  `FakeBackend` for tests), selected via `OBSIDIAN_EMBEDDER`
+  (`fastembed` | `ollama` | `fake` | `none`). Factory default when
+  the env var is unset is `fastembed`, but the base install (and the
+  Docker image) ships without `fastembed` in deps and sets
+  `OBSIDIAN_EMBEDDER=ollama` — installing the `[fastembed]` extra
+  is required to use the in-process backend. Ollama also reads
+  `OBSIDIAN_EMBEDDER_MODEL` and `OLLAMA_URL`. Switching models
+  auto-clears the index on next start.
+- `obsidian_mcp/vector_store.py` — chunk-level SQLite + `sqlite-vec`
+  store under `<vault>/.obsidian-mcp/index.db`.
+- `obsidian_mcp/semantic.py` — query pipeline: embed → kNN → graph
+  re-rank (cos_sim + wikilink + tag_jaccard + neighbor_hops +
+  recency).
+- `obsidian_mcp/embed_queue.py` — background debounced worker that
+  coalesces rapid edits and re-embeds changed chunks only
+  (body_hash short-circuit).
+- `obsidian_mcp/suggest.py` — auto-link suggestions: scans the vault
+  via the chunk vector store, scores pairs by `0.7*cos_sim +
+  0.3*tag_jaccard`, filters out already-linked pairs (undirected) and
+  dismissals, returns top suggestions. Dismissals + `apply` are MCP
+  tools and Explorer endpoints.
+- `obsidian_mcp/explorer/` — Vault Explorer: optional FastAPI sidecar
+  (`pip install -e ".[explorer]"`) for debugging retrieval,
+  visualizing the wikilink graph, and demoing the stack. Ranked
+  results with per-signal contribution bars, slider-tunable re-rank
+  weights, live Cytoscape graph view. Imports `Vault` directly; same
+  SQLite index as the MCP server. Built into a separate Docker image
+  (`Dockerfile.explorer`, published as
+  `ghcr.io/punparin/obsidian-mcp-explorer`).
+
+## Key conventions
+
+- All paths are relative to vault root
+- Path security: all resolved paths checked to stay within vault
+- Logging to stderr only (STDIO transport requirement)
+- Vault path via `OBSIDIAN_VAULT_PATH` env var

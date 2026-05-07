@@ -71,9 +71,8 @@ auto-link suggestions? Run the [Explorer](./docs/explorer.md) sidecar.
   — Karpathy-inspired lint + schema + ingest loop
 - [`docs/explorer.md`](./docs/explorer.md) — Vault Explorer browser
   UI for debugging retrieval and visualizing the graph
-- [`docs/using-with-claude-code.md`](./docs/using-with-claude-code.md)
-  — agent usage patterns, tool-choice rules, ready-to-paste system
-  prompt block
+- [`AGENT.md`](./AGENT.md) — agent usage patterns, tool-choice
+  rules, ready-to-paste system-prompt block
 
 ## Contributing
 
