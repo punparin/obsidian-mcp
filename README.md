@@ -71,8 +71,10 @@ auto-link suggestions? Run the [Explorer](./docs/explorer.md) sidecar.
   — Karpathy-inspired lint + schema + ingest loop
 - [`docs/explorer.md`](./docs/explorer.md) — Vault Explorer browser
   UI for debugging retrieval and visualizing the graph
-- [`AGENT.md`](./AGENT.md) — agent usage patterns, tool-choice
-  rules, ready-to-paste system-prompt block
+- [`AGENT.md`](./AGENT.md) — operator reference: tuning knobs,
+  deployment notes, conflict semantics. (The agent operating rules
+  themselves now ship via MCP `initialize.instructions` from
+  [`obsidian_mcp/agent_instructions.py`](./obsidian_mcp/agent_instructions.py).)
 
 ## Contributing
 
