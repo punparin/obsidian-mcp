@@ -1,17 +1,7 @@
-# AGENT.md
+# Operations
 
 Operator reference for **obsidian-mcp**: tuning knobs, deployment
 notes, and conflict-detection semantics.
-
-> **Looking for the agent operating rules?** They now live in
-> [`obsidian_mcp/agent_instructions.py`](obsidian_mcp/agent_instructions.py)
-> and ship via the MCP `initialize.instructions` field. Most clients
-> (Claude Code, …) inject them into the agent's system prompt
-> automatically — no copy-paste needed. If your client ignores
-> `instructions`, paste the value of the `INSTRUCTIONS` constant from
-> that file into your system prompt or rules file. That Python file
-> is the single source of truth; this doc only covers operator-side
-> concerns.
 
 ## Tuning
 
