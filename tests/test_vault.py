@@ -109,6 +109,35 @@ class TestListNotes:
         with pytest.raises(FileNotFoundError):
             vault.list_notes("nonexistent_folder")
 
+    def test_include_frontmatter_returns_dicts(self, vault):
+        notes = vault.list_notes(include_frontmatter=True)
+        by_path = {n["path"]: n for n in notes}
+        # note1.md has frontmatter title and tags
+        assert by_path["note1.md"]["title"] == "Note One"
+        assert "project" in by_path["note1.md"]["tags"]
+        assert by_path["note1.md"]["frontmatter"]["title"] == "Note One"
+        # note3.md has no frontmatter — falls back to filename stem
+        assert by_path["subfolder/note3.md"]["title"] == "note3"
+        assert by_path["subfolder/note3.md"]["frontmatter"] == {}
+
+    def test_include_frontmatter_with_subfolder(self, vault):
+        notes = vault.list_notes("subfolder", include_frontmatter=True)
+        paths = [n["path"] for n in notes]
+        assert paths == ["subfolder/note3.md"]
+
+    def test_include_frontmatter_falls_back_for_unindexed(self, vault, tmp_vault):
+        # Drop a fresh file into the vault that the watcher hasn't
+        # picked up yet — list_notes should still surface it with
+        # parsed frontmatter, not skip it.
+        (tmp_vault / "fresh.md").write_text(
+            "---\ntitle: Fresh One\ntags: [new]\n---\n\nbody\n"
+        )
+        # Don't trigger reindex — simulate watcher lag.
+        notes = vault.list_notes(include_frontmatter=True)
+        by_path = {n["path"]: n for n in notes}
+        assert by_path["fresh.md"]["title"] == "Fresh One"
+        assert by_path["fresh.md"]["tags"] == ["new"]
+
 
 class TestDeleteNote:
     def test_deletes(self, vault, tmp_vault):

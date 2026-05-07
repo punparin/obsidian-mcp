@@ -539,12 +539,46 @@ class Vault:
         self._enqueue_embed(rel)
         return f"Appended: {path}"
 
-    def list_notes(self, folder: str = "") -> list[str]:
-        """List all .md files in the vault or a subfolder."""
+    def list_notes(
+        self, folder: str = "", include_frontmatter: bool = False
+    ) -> list[str] | list[dict]:
+        """List all .md files in the vault or a subfolder.
+
+        Default returns paths only (sorted, one per file). Pass
+        ``include_frontmatter=True`` to return ``[{path, title, tags,
+        frontmatter}]`` instead — useful for triage scans that would
+        otherwise need a follow-up ``read_note`` per file. Frontmatter
+        comes from the in-memory index; entries not yet indexed (e.g.
+        a file created seconds ago, before the watcher caught up) are
+        re-parsed on the fly.
+        """
         search_path = self._resolve_path(folder) if folder else self.root
         if not search_path.is_dir():
             raise FileNotFoundError(f"Folder not found: {folder}")
-        return sorted(self._to_relative(f) for f in self._iter_markdown(search_path))
+        paths = sorted(self._to_relative(f) for f in self._iter_markdown(search_path))
+        if not include_frontmatter:
+            return paths
+        out: list[dict] = []
+        for rel in paths:
+            note = self.index.get(rel)
+            if note is None:
+                # Not in the index — either watcher hasn't caught up
+                # to a fresh file, or the file was skipped during
+                # _build_index because it failed to parse (template
+                # placeholders, malformed YAML). Try a fresh parse;
+                # if that also fails, skip — same fall-through as
+                # _build_index uses.
+                try:
+                    note = self._index_single(rel)
+                except Exception:
+                    continue
+            out.append({
+                "path": rel,
+                "title": note.title,
+                "tags": note.tags,
+                "frontmatter": note.frontmatter,
+            })
+        return out
 
     def delete_note(self, path: str) -> str:
         """Delete a note."""
