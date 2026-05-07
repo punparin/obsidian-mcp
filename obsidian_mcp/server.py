@@ -314,8 +314,11 @@ async def list_inbox() -> str:
 async def find_related_notes(content: str, limit: int = 10) -> str:
     """Given a piece of content (raw note, article, etc.), find existing vault notes that relate to it.
 
-    Uses keyword overlap, tag matching, and wikilink mentions. No AI/embeddings required.
-    Returns top N matches with score and matching reasons.
+    When semantic retrieval is enabled (the default), delegates to the
+    embedding + graph re-rank pipeline and returns the same per-result
+    breakdown as semantic_search (cos_sim, signals, contributions).
+    Otherwise falls back to a lexical scorer (keyword overlap, tag
+    matching, wikilink mentions) and returns score + reasons.
     """
     matches = _find_related(vault, content, limit=limit)
     if not matches:
