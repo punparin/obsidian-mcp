@@ -7,6 +7,8 @@ stack to teammates. Query box, ranked results with per-signal score
 breakdown bars, slider-tunable re-rank weights with presets, and a
 Cytoscape graph view that highlights hits and neighbors.
 
+![Explorer demo](./explorer-demo.gif)
+
 ## Local
 
 ```bash
