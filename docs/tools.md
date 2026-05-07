@@ -5,16 +5,16 @@ self-maintaining knowledge wiki, and semantic retrieval.
 
 | Group | Tool | Description |
 |---|---|---|
-| File ops | `read_note` | Read note by path |
-| | `write_note` | Create/overwrite note |
+| File ops | `read_note` | Read note by path. Records mtime for write-conflict detection |
+| | `write_note` | Create/overwrite note. Raises `NoteConflictError` (with the current disk content) if the file moved under you since the last `read_note` |
 | | `append_note` | Append to note |
-| | `list_notes` | List `.md` files in folder |
+| | `list_notes` | List `.md` files in folder. `include_frontmatter=True` returns parsed YAML alongside each path so triage avoids a per-note follow-up read |
 | | `delete_note` | Delete a note |
 | | `move_note` | Rename/move + auto-update wikilinks |
-| Search | `search` | Full-text search |
-| | `search_by_tags` | Find by `#tags` or frontmatter tags |
-| | `search_by_frontmatter` | Find by any YAML property |
-| | `search_by_date_range` | Filter by date (file or frontmatter) |
+| Search | `search` | Full-text search. `path=` scopes to a subtree (e.g. `path="projects/"`) |
+| | `search_by_tags` | Find by `#tags` or frontmatter tags. Supports `path=` subtree scope |
+| | `search_by_frontmatter` | Find by YAML properties: single `key=value`, or multiple AND-combined fields via `filters={...}`. Substring match on strings; element match on list values. `path=` subtree scope |
+| | `search_by_date_range` | Filter by date (file or frontmatter). `path=` subtree scope |
 | Frontmatter | `get_note_frontmatter` | Parse YAML frontmatter |
 | | `update_note_frontmatter` | Update properties without touching content |
 | Links | `get_backlinks` | Find notes linking TO a note |

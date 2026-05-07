@@ -61,8 +61,10 @@ without restarting the server.
 The watcher also backs **conflict detection on writes**: if a note
 changed on disk between the agent's last `read_note` and its next
 `write_note` on the same path, the write is refused with a
-`NoteConflictError` so you don't clobber an edit made in Obsidian. Pass
-`force=true` to override intentionally.
+`NoteConflictError` so you don't clobber an edit made in Obsidian.
+The error carries the *current disk content* (~4 KB cap) so the agent
+can three-way-merge in place instead of needing a follow-up read.
+Pass `force=true` to override intentionally.
 
 Directories like `.obsidian/`, `.git/`, `.trash/`, and non-markdown
 files are ignored by the watcher.
