@@ -4,19 +4,24 @@ Guidance for any MCP-capable agent (Claude Code, Cursor, Cline,
 Continue, Goose, Windsurf, …) on how to use **obsidian-mcp**
 effectively.
 
-Two ways to wire this up:
-
-1. **Agents that auto-load `AGENT.md` / `AGENTS.md` / `CLAUDE.md`** —
-   drop a copy of the [system-prompt block](#system-prompt-block) into
-   your vault's agent file (e.g. `<vault>/AGENT.md` or
-   `~/.claude/CLAUDE.md`). The agent picks it up every session.
-2. **Agents configured via explicit system prompt** — paste the same
-   block into your agent's prompt config.
+> **Most users don't need to do anything with this file.** The server
+> ships these operating rules via the MCP `instructions` field on
+> `initialize`, and clients that respect that (Claude Code and most
+> others) will inject them into the agent's system prompt
+> automatically. The full payload lives in
+> [`obsidian_mcp/agent_instructions.py`](obsidian_mcp/agent_instructions.py).
+>
+> Two reasons to read on:
+> 1. Your client ignores `instructions` — paste the [system-prompt
+>    block](#system-prompt-block) into your config manually.
+> 2. You want the longer reference (tuning knobs, operational notes,
+>    score interpretation, conflict semantics).
 
 ## System-prompt block
 
-Paste the section below verbatim into your agent's system prompt or
-project-level rules file:
+If your client doesn't auto-load MCP `instructions`, paste the section
+below verbatim into your agent's system prompt or project-level rules
+file:
 
 ```markdown
 ## Obsidian MCP

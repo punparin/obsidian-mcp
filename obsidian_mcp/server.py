@@ -42,6 +42,7 @@ from .schema import (
 from .schema import (
     validate_vault_schema as _validate_vault,
 )
+from .agent_instructions import INSTRUCTIONS as _AGENT_INSTRUCTIONS
 from .templates import create_from_template as _from_template
 from .vault import Vault
 
@@ -70,7 +71,7 @@ try:
         logger.info("semantic retrieval disabled")
 except Exception:
     logger.exception("failed to enable semantic retrieval; continuing without it")
-mcp = FastMCP("obsidian")
+mcp = FastMCP("obsidian", instructions=_AGENT_INSTRUCTIONS)
 
 
 # ── Core File Operations ──────────────────────────────────────────────
