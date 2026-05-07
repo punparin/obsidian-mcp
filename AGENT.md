@@ -1,33 +1,48 @@
-# Using Obsidian MCP With Claude Code
+# AGENT.md
 
-Guidance for Claude Code — and the humans configuring it — on how to use
-this MCP effectively. Drop the rules section into your vault's
-`CLAUDE.md` (or `~/.claude/CLAUDE.md` if the vault is your only Obsidian
-setup) so Claude picks them up on every session.
+Guidance for any MCP-capable agent (Claude Code, Cursor, Cline,
+Continue, Goose, Windsurf, …) on how to use **obsidian-mcp**
+effectively.
 
-## TL;DR rules to paste into CLAUDE.md
+Two ways to wire this up:
+
+1. **Agents that auto-load `AGENT.md` / `AGENTS.md` / `CLAUDE.md`** —
+   drop a copy of the [system-prompt block](#system-prompt-block) into
+   your vault's agent file (e.g. `<vault>/AGENT.md` or
+   `~/.claude/CLAUDE.md`). The agent picks it up every session.
+2. **Agents configured via explicit system prompt** — paste the same
+   block into your agent's prompt config.
+
+## System-prompt block
+
+Paste the section below verbatim into your agent's system prompt or
+project-level rules file:
 
 ```markdown
 ## Obsidian MCP
 
-- Use `semantic_search` for conceptual queries ("what did I think about
-  X?", "anything about retrieval-augmented generation"). Use `search`
-  for exact strings — quoted phrases, error messages, code snippets,
-  filenames, inline `#tags`.
-- `.obsidian-mcp/` at the vault root is a local vector index cache. Do
-  not read, edit, or commit files under it. It regenerates itself.
+You have access to obsidian-mcp, an MCP server with read/write access
+to an Obsidian vault. Follow these rules:
+
+- Use `semantic_search` for conceptual queries ("what did I think
+  about X?", "anything about retrieval-augmented generation"). Use
+  `search` for exact strings — quoted phrases, error messages, code
+  snippets, filenames, inline `#tags`.
+- `.obsidian-mcp/` at the vault root is a local vector index cache.
+  Do not read, edit, or commit files under it. It regenerates itself.
 - After renaming a note, the vault already updates wikilinks. Don't
   hand-edit references; call `move_note` instead.
-- `write_note` refuses to clobber a note edited on disk since the last
-  `read_note` on the same path. Re-read before overwriting, or pass
-  `force=True` only when you mean it.
-- The ingest flow is `list_inbox` → `read_note` → `find_related_notes`
-  → update related notes → `archive_inbox_note`. Don't delete inbox
-  notes; archive them so the source stays recoverable.
+- `write_note` refuses to clobber a note edited on disk since the
+  last `read_note` on the same path. Re-read before overwriting, or
+  pass `force=True` only when you mean it.
+- The ingest flow is `list_inbox` → `read_note` →
+  `find_related_notes` → update related notes → `archive_inbox_note`.
+  Don't delete inbox notes; archive them so the source stays
+  recoverable.
 - `suggest_links` finds note pairs that look related but aren't
   wikilinked. Use `apply_link_suggestion(source, target)` to add a
-  `See also: [[target]]` (idempotent), or `dismiss_link_suggestion` to
-  hide a pair permanently. Don't bulk-apply — review each one.
+  `See also: [[target]]` (idempotent), or `dismiss_link_suggestion`
+  to hide a pair permanently. Don't bulk-apply — review each one.
 ```
 
 ## When to use each tool
@@ -67,9 +82,9 @@ When asked "is there a note about X already?":
    fresh `write_note` is fine (no conflict check needed).
 3. For appends, prefer `append_note` — it's additive and won't trip
    the conflict check.
-4. After moving, use `move_note` (it auto-updates `[[wikilinks]]` across
-   the vault). Manual rename + hand-editing references will leave the
-   index and wikilinks inconsistent until the next reindex.
+4. After moving, use `move_note` (it auto-updates `[[wikilinks]]`
+   across the vault). Manual rename + hand-editing references will
+   leave the index and wikilinks inconsistent until the next reindex.
 
 ### Ingest flow
 
@@ -135,8 +150,8 @@ Each result includes a score breakdown:
 ```
 
 - `cos_sim` near 1.0 → strong semantic match on the chunk body.
-- `wikilink_match: true` → the query explicitly `[[linked]]` this note
-  (very high confidence it's the target).
+- `wikilink_match: true` → the query explicitly `[[linked]]` this
+  note (very high confidence it's the target).
 - `tag_jaccard` → overlap of `#tags` in query vs note.
 - `neighbor_hops: 1` → direct wikilink neighbor of a query-mentioned
   note. `2` → two hops away. Missing → unrelated in the graph.
@@ -159,7 +174,7 @@ explicit graph over raw semantic similarity:
 | `OBSIDIAN_W_RECENCY` | 0.10 | recency decay |
 
 Lower `W_LINK` + `W_TAG` if you want results to feel more exploratory
-and less "Claude keeps surfacing the same explicitly-linked notes."
+and less "the agent keeps surfacing the same explicitly-linked notes."
 
 ## Operational notes
 
@@ -188,7 +203,7 @@ and less "Claude keeps surfacing the same explicitly-linked notes."
 read_note(p)          → records disk mtime
 user edits p in Obsidian
 write_note(p, …)      → NoteConflictError (mtime advanced)
-→ Claude should re-read, merge, retry
+→ agent should re-read, merge, retry
 → or pass force=True to overwrite deliberately
 ```
 
