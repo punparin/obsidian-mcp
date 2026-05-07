@@ -59,6 +59,21 @@ class NoteIndex:
 INLINE_TAG_RE = re.compile(r"(?:^|\s)#([a-zA-Z0-9_/-]+)")
 
 
+def _frontmatter_matches(fm: dict, key: str, value: str) -> bool:
+    """Case-insensitive substring match against a frontmatter field.
+
+    Treats list-typed values (e.g. ``tags: [a, b]``) as match-any-element.
+    Returns False when the key is absent.
+    """
+    fm_value = fm.get(key)
+    if fm_value is None:
+        return False
+    needle = value.lower()
+    if isinstance(fm_value, list):
+        return any(needle in str(item).lower() for item in fm_value)
+    return needle in str(fm_value).lower()
+
+
 class Vault:
     """Central abstraction for an Obsidian vault."""
 
@@ -707,25 +722,41 @@ class Vault:
                 results.append({"path": p, "title": note.title, "tags": note.tags})
         return results
 
-    def search_by_frontmatter(self, key: str, value: str, path: str = "") -> list[dict]:
-        """Find notes where a frontmatter property matches a value.
+    def search_by_frontmatter(
+        self,
+        key: str = "",
+        value: str = "",
+        path: str = "",
+        filters: dict[str, str] | None = None,
+    ) -> list[dict]:
+        """Find notes where frontmatter properties match (case-insensitive substring).
+
+        Single-field: pass ``key`` and ``value`` (e.g. status="draft").
+        Multi-field (AND): pass ``filters={"status": "draft", "type": "weekly"}``
+        — every key/value pair must match for a note to be returned.
+        When both styles are passed, ``filters`` is authoritative.
 
         ``path`` (optional) scopes to a subtree.
         """
-        value_lower = value.lower()
+        if filters is None:
+            filters = {key: value} if key else {}
+        if not filters:
+            return []
+
         prefix = self._normalize_subtree(path)
         results = []
         for p, note in self.index.items():
             if prefix and not p.startswith(prefix):
                 continue
-            fm_value = note.frontmatter.get(key)
-            if fm_value is None:
+            if not all(
+                _frontmatter_matches(note.frontmatter, k, v)
+                for k, v in filters.items()
+            ):
                 continue
-            if isinstance(fm_value, list):
-                if any(value_lower in str(v).lower() for v in fm_value):
-                    results.append({"path": p, "title": note.title, key: fm_value})
-            elif value_lower in str(fm_value).lower():
-                results.append({"path": p, "title": note.title, key: fm_value})
+            entry = {"path": p, "title": note.title}
+            for k in filters:
+                entry[k] = note.frontmatter.get(k)
+            results.append(entry)
         return results
 
     def search_by_date_range(

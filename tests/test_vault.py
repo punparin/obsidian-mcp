@@ -255,6 +255,44 @@ class TestSearchByFrontmatter:
         # note1.md has frontmatter title; subfolder has no frontmatter notes
         assert vault.search_by_frontmatter("title", "Note", path="subfolder") == []
 
+    def test_filters_multi_field_and(self, vault):
+        # Both pairs must match. note1 has title=Note One AND date=2026-01-10.
+        # note2 has title=Note Two but a different date — must drop out.
+        results = vault.search_by_frontmatter(
+            filters={"title": "Note", "date": "2026-01-10"}
+        )
+        paths = [r["path"] for r in results]
+        assert paths == ["note1.md"]
+
+    def test_filters_includes_all_matched_keys(self, vault):
+        results = vault.search_by_frontmatter(
+            filters={"title": "Note One", "date": "2026-01-10"}
+        )
+        assert results
+        first = results[0]
+        # The result row exposes every key the caller filtered on, not just one.
+        assert "title" in first and "date" in first
+
+    def test_filters_takes_precedence_over_key_value(self, vault):
+        # If both shapes are passed, filters wins. Here key/value alone would
+        # return note1+note2; filters narrows to just note1 via date.
+        results = vault.search_by_frontmatter(
+            key="title", value="Note",
+            filters={"title": "Note", "date": "2026-01-15"},
+        )
+        paths = [r["path"] for r in results]
+        assert paths == ["note2.md"]
+
+    def test_empty_filters_returns_nothing(self, vault):
+        # Defensive: don't accidentally match the whole vault.
+        assert vault.search_by_frontmatter(filters={}) == []
+
+    def test_filters_partial_match_still_works(self, vault):
+        # Each value uses the same case-insensitive substring rule as the
+        # single-field path — "note" matches "Note One" / "Note Two".
+        results = vault.search_by_frontmatter(filters={"title": "note"})
+        assert len(results) >= 2
+
 
 class TestSubtreeNormalization:
     def test_rejects_path_escape(self, vault):
