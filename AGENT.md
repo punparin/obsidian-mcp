@@ -71,8 +71,12 @@ When asked "is there a note about X already?":
 1. Call `semantic_search("X", k=10)` first.
 2. If the top hit has `signals.wikilink_match: true` or high
    `tag_jaccard`, that's almost certainly the target — read it.
-3. If no result has `score > ~0.5`, it probably doesn't exist. Offer
-   to create one rather than force-fitting a low-signal match.
+3. Otherwise, calibrate by the breakdown: a top hit at `cos_sim` 0.5+
+   is strong, 0.35-0.5 is plausible (read it before deciding), and
+   under 0.3 with no graph signals usually means no good match
+   exists yet — offer to create rather than force-fit. Don't expect
+   raw cos_sim above ~0.6 for short queries; that's not how
+   sentence-embedding similarities are distributed.
 
 ### Writing / editing flow
 
@@ -115,8 +119,10 @@ for each suggestion:
 
 Rules of thumb:
 
-- Default threshold is 0.55 — that's a solid baseline. Drop to ~0.4
-  for an exploratory sweep, raise to ~0.7 if you only want
+- Default threshold is 0.55 on `suggest_links`'s own score formula
+  (`0.7 * cos_sim + 0.3 * tag_jaccard`) — distinct from
+  `semantic_search`'s re-rank score, so don't compare them. Drop to
+  ~0.4 for an exploratory sweep, raise to ~0.7 if you only want
   high-confidence pairs.
 - `apply_link_suggestion` is idempotent (it checks the resolved-link
   graph, not just substring), so re-applying is a safe no-op. The

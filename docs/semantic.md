@@ -33,6 +33,28 @@ Your explicit wikilinks can beat a marginally higher semantic score —
 the bias is deliberate. Tune via `OBSIDIAN_W_SEM`, `OBSIDIAN_W_LINK`,
 `OBSIDIAN_W_TAG`, `OBSIDIAN_W_NEIGHBOR`, `OBSIDIAN_W_RECENCY`.
 
+**Interpreting scores:** sentence-embedding cosine similarities are
+not calibrated probabilities. For typical short queries against a
+real vault, expect:
+
+| `cos_sim` range | What it usually means |
+|---|---|
+| `> 0.6` | Strong match — query and chunk share most of the topic. Rare for short queries. |
+| `0.45 – 0.6` | Solid topical match. Treat as a likely target. |
+| `0.3 – 0.45` | Plausible — read before relying on it. Often the right answer when no stronger signal exists. |
+| `< 0.3` | Weak. Without a graph signal (`wikilink_match`, `tag_jaccard > 0.2`, or `neighbor_hops`), assume no good match. |
+
+The **final re-rank score** (after the formula above) often lands
+~0.4–0.7 on the top hit even for clearly relevant notes — that's
+expected, not a sign of a tuning problem. Use the breakdown
+(`cos_sim`, `signals`, `contributions`) to decide whether the match
+is semantic-driven or graph-driven before treating a low number as
+"no match."
+
+There is no single hard threshold below which `semantic_search` says
+"this doesn't exist." That call belongs to the agent and depends on
+whether any graph signal accompanies the cosine number.
+
 **Lifecycle:**
 
 - Edits (from MCP or Obsidian) are picked up by the filesystem watcher
@@ -96,8 +118,10 @@ grow your graph without re-reading the whole vault.
    from the chunk vector store.
 2. Skip self-pairs and pairs already wikilinked in either direction
    (treated as undirected) and pairs you've previously dismissed.
-3. Score = `0.7 * cos_sim + 0.3 * tag_jaccard`. Above a threshold
-   (default 0.55) it shows up as a suggestion.
+3. Score = `0.7 * cos_sim + 0.3 * tag_jaccard` — note this is
+   `suggest_links`'s own scoring, distinct from the `semantic_search`
+   re-rank above. Above a threshold (default 0.55) the pair shows up
+   as a suggestion.
 4. Dedupe by canonical pair so A→B and B→A are one suggestion.
 
 ```python
