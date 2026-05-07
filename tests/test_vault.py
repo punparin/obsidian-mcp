@@ -62,10 +62,26 @@ class TestWriteConflictDetection:
         # Simulate an Obsidian edit: content changes + mtime advances.
         (tmp_vault / "note1.md").write_text("EXTERNALLY EDITED")
         self._bump_mtime(tmp_vault / "note1.md")
-        with pytest.raises(NoteConflictError, match="changed on disk"):
+        with pytest.raises(NoteConflictError, match="changed on disk") as exc:
             vault.write_note("note1.md", "MCP overwrite")
         # Disk content is untouched.
         assert (tmp_vault / "note1.md").read_text() == "EXTERNALLY EDITED"
+        # The error carries the current on-disk text both as a structured
+        # attribute and in the stringified message.
+        assert exc.value.current_content == "EXTERNALLY EDITED"
+        assert "EXTERNALLY EDITED" in str(exc.value)
+
+    def test_conflict_content_truncated_for_huge_notes(self, vault, tmp_vault):
+        vault.read_note("note1.md")
+        big = "x" * 9000
+        (tmp_vault / "note1.md").write_text(big)
+        self._bump_mtime(tmp_vault / "note1.md")
+        with pytest.raises(NoteConflictError) as exc:
+            vault.write_note("note1.md", "MCP overwrite")
+        # Cap is 4096 chars + a truncation marker; full body must NOT round-trip.
+        assert exc.value.current_content is not None
+        assert len(exc.value.current_content) < 9000
+        assert "truncated" in exc.value.current_content
 
     def test_force_bypasses_conflict(self, vault, tmp_vault):
         vault.read_note("note1.md")

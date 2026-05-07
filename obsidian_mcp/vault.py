@@ -23,8 +23,21 @@ if TYPE_CHECKING:
     from .watcher import VaultWatcher
 
 
+_CONFLICT_CONTENT_CAP = 4096
+
+
 class NoteConflictError(RuntimeError):
-    """Raised when write_note would clobber an edit made since the last read."""
+    """Raised when write_note would clobber an edit made since the last read.
+
+    ``current_content`` carries the on-disk text at the moment of the
+    conflict (truncated to ~4 KB) so a caller can resolve without an
+    extra ``read_note`` round-trip. The same content is also embedded
+    in the stringified message so plain ``str(e)`` surfaces it.
+    """
+
+    def __init__(self, message: str, current_content: str | None = None):
+        super().__init__(message)
+        self.current_content = current_content
 
 
 @dataclass
@@ -509,9 +522,26 @@ class Vault:
             # Only check if we have a baseline — a fresh write without any
             # prior read (e.g. create_note_from_template) is allowed.
             if last_seen is not None and disk_mtime > last_seen:
+                # Snapshot the on-disk text so the agent can resolve
+                # without a follow-up read_note. Cap to keep payloads
+                # sane on big notes.
+                try:
+                    disk_text = file_path.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    disk_text = ""
+                truncated_marker = ""
+                if len(disk_text) > _CONFLICT_CONTENT_CAP:
+                    disk_text = disk_text[:_CONFLICT_CONTENT_CAP]
+                    truncated_marker = (
+                        f"\n... [truncated to first {_CONFLICT_CONTENT_CAP} chars]"
+                    )
+                current = disk_text + truncated_marker
                 raise NoteConflictError(
                     f"Note changed on disk since last read: {path}. "
-                    f"Re-read the note to see the current content, or pass force=True to overwrite."
+                    f"Re-read the note (or use the content below) to merge, "
+                    f"or pass force=True to overwrite.\n\n"
+                    f"--- current content on disk ---\n{current}",
+                    current_content=current,
                 )
 
         file_path.parent.mkdir(parents=True, exist_ok=True)

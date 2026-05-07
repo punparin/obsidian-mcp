@@ -87,8 +87,10 @@ async def write_note(path: str, content: str, force: bool = False) -> str:
     """Create or overwrite a note. Creates parent directories if needed.
 
     Refuses to overwrite if the note changed on disk since the last read_note
-    call (typically because the user edited it in Obsidian). Pass force=True
-    to overwrite anyway.
+    call (typically because the user edited it in Obsidian). The conflict
+    error includes the current on-disk content (capped ~4 KB) so you can
+    merge in place without an extra read_note. Pass force=True to overwrite
+    anyway.
     """
     return vault.write_note(path, content, force=force)
 
