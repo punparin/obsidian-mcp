@@ -100,10 +100,19 @@ async def append_note(path: str, content: str) -> str:
 
 
 @mcp.tool()
-async def list_notes(folder: str = "") -> str:
-    """List all .md files in the vault or a subfolder. Returns one path per line."""
-    notes = vault.list_notes(folder)
-    return "\n".join(notes) if notes else "No notes found."
+async def list_notes(folder: str = "", include_frontmatter: bool = False) -> str:
+    """List all .md files in the vault or a subfolder.
+
+    Default returns one path per line. Pass `include_frontmatter=True`
+    to get JSON `[{path, title, tags, frontmatter}]` — useful for
+    triage scans by date / status / tag without an N+1 read loop.
+    """
+    notes = vault.list_notes(folder, include_frontmatter=include_frontmatter)
+    if not notes:
+        return "No notes found."
+    if include_frontmatter:
+        return json.dumps(notes, indent=2, default=str)
+    return "\n".join(notes)
 
 
 @mcp.tool()
