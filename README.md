@@ -45,9 +45,10 @@ selection table and recommended models.
 
 ## What it does
 
-**33 tools + 2 auto-loaded resources** across file ops, search (text
+**34 tools + 2 auto-loaded resources** across file ops, search (text
 + semantic), frontmatter, wikilink graph, templates, lint, schema
-validation, ingest workflow, and auto-link suggestions.
+validation, ingest workflow, auto-link suggestions, and a
+groundedness self-check for agent answers.
 
 See [`docs/tools.md`](./docs/tools.md) for the full reference.
 

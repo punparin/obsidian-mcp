@@ -34,7 +34,7 @@ Cursor, Cline, Continue, Goose, Windsurf, etc.) can register it.
 
 ```mermaid
 flowchart TD
-    MCP[Obsidian MCP - 33 tools]
+    MCP[Obsidian MCP - 34 tools]
 
     MCP --> FileOps[File Operations - 6 tools]
     MCP --> Search[Search - 4 tools]
@@ -46,6 +46,7 @@ flowchart TD
     MCP --> Ingest[Ingest - 3 tools]
     MCP --> Sem[Semantic - 3 tools]
     MCP --> Sug[Suggest - 3 tools]
+    MCP --> Gnd[Groundedness - 1 tool]
     MCP --> Res[Resources - 2 auto-loaded]
 
     FileOps --> F1[read_note, write_note, append_note, list_notes, delete_note, move_note]

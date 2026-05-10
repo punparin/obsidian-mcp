@@ -10,6 +10,7 @@ from fastmcp import FastMCP
 from .agent_instructions import INSTRUCTIONS as _AGENT_INSTRUCTIONS
 from .frontmatter import get_frontmatter as _get_fm
 from .frontmatter import update_frontmatter as _update_fm
+from .groundedness import check_register as _check_register
 from .ingest import (
     archive_inbox_note as _archive_inbox,
 )
@@ -448,6 +449,27 @@ async def dismiss_link_suggestion(source: str, target: str) -> str:
     """
     vault.dismiss_link_suggestion(source, target)
     return f"dismissed: {source} <-> {target}"
+
+
+# ── Groundedness ──────────────────────────────────────────────────────
+
+
+@mcp.tool()
+async def check_groundedness(answer: str) -> str:
+    """Sniff a draft answer for "I gave up on the vault" register shifts.
+
+    Returns the list of generic-language markers triggered by the
+    answer (e.g. "generally speaking", "typically,",
+    "based on my training"). A non-empty result usually means
+    retrieval didn't surface what the agent needed and the response
+    drifted to its priors; consider re-querying with `semantic_search`
+    or `find_related_notes` before replying.
+
+    A clean (empty) result is not a guarantee of correctness — it
+    only rules out the cheapest, most stereotyped failure mode.
+    """
+    hits = _check_register(answer)
+    return json.dumps({"markers": hits, "verdict": "fail" if hits else "pass"}, indent=2)
 
 
 # ── Resources ──────────────────────────────────────────────────────────
