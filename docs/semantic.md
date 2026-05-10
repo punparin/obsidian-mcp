@@ -107,6 +107,43 @@ dim. On startup, if either has changed, the index is cleared and the
 reconcile loop re-embeds every note in the background. Expect a few
 minutes of degraded search quality after a switch on large vaults.
 
+## Eval harness
+
+A labeled retrieval benchmark lives under `tests/eval/`: 19 themed
+notes + 18 hand-labeled `(query, expected_paths)` pairs. Several
+topics have multiple sibling notes that share vocabulary (two async
+notes, two decorator notes, three retrieval notes, two same-project
+meetings on different dates) so ranking is non-trivial — the
+embedder has to discriminate, not just pick the only relevant note.
+Use it to measure quality before/after weight tweaks or embedder
+swaps rather than guessing whether a change made retrieval better.
+
+**Run as pytest** (CI-friendly, asserts floor thresholds):
+
+```bash
+pytest -m eval
+```
+
+The eval is marker-gated so default `pytest` skips it (it loads the
+real fastembed model). Floors are calibrated against the current
+baseline (`hit@1 = 0.94, hit@3 = hit@5 = 1.00, MRR = 0.972`) with
+1–3 miss tolerance — `hit@1 ≥ 0.80, hit@3 ≥ 0.90, hit@5 ≥ 0.94,
+MRR ≥ 0.85`. Anything below means a likely regression.
+
+**Run as CLI** (ad-hoc, prints metrics + per-query breakdown):
+
+```bash
+python scripts/eval_retrieval.py
+# or with an alternative embedder:
+OBSIDIAN_EMBEDDER=ollama OBSIDIAN_EMBEDDER_MODEL=nomic-embed-text \
+    python scripts/eval_retrieval.py
+```
+
+Adding queries: append to `tests/eval/queries.py`. The corpus is
+intentionally small to keep first-run cost low; if you need broader
+coverage, prefer adding labeled queries against the existing notes
+before adding new notes.
+
 ## Auto-link suggestions
 
 Find pairs of notes that look related but aren't wikilinked yet — and

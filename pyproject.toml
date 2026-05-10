@@ -34,6 +34,10 @@ explorer = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "eval: retrieval-quality eval harness; loads the real fastembed model (~5s on a warm cache). Skipped by default; run with `pytest -m eval` or `pytest -m ''` to include.",
+]
+addopts = "-m 'not eval'"
 
 [tool.ruff]
 line-length = 120
