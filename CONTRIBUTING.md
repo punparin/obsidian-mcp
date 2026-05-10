@@ -22,7 +22,7 @@ python3 -m venv .venv
 
 Tests use a `fake` embedding backend, so you don't need Ollama or a downloaded model to run the suite.
 
-The `tests/test_retrieval_eval.py` suite is a labeled retrieval benchmark — gated behind `@pytest.mark.eval` because it loads the real `fastembed` model (~5 s on a warm cache, longer on first run). Default `pytest` skips it. Run with `pytest -m eval` (just the eval) or `pytest -m ''` (everything). See [`docs/semantic.md`](./docs/semantic.md#eval-harness) for thresholds and how to add queries.
+The `tests/test_retrieval_eval.py` suite is a labeled retrieval benchmark — gated behind `@pytest.mark.eval` because it loads the real `fastembed` model (~5 s on a warm cache, longer on first run). Default `pytest` skips it. Run with `pytest -m eval` (just the eval) or `pytest -m ''` (everything). CI runs it as a separate `eval` job that gates the Docker build; per-query metrics are rendered into the workflow's job summary. See [`docs/semantic.md`](./docs/semantic.md#eval-harness) for thresholds and how to add queries.
 
 ## Linting
 
