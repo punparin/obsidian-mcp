@@ -63,14 +63,16 @@ Include "Closes #N" if it fixes an open issue. Skip the AI-coauthor footers — 
 - **Tests for new behavior.** Especially in `semantic.py`, `suggest.py`, `vector_store.py`, `links.py` — these are the parts where regressions are easiest to introduce and hardest to spot.
 - **One logical change per PR.** A bug fix doesn't need surrounding cleanup; a new tool doesn't need to refactor the watcher. Two changes → two PRs.
 - **No new config knobs without docs.** If you're adding an env var, document it in `README.md`. If you're adding or renaming a tool argument that agents must reach for correctly, update `obsidian_mcp/agent_instructions.py` — that's the runtime payload the server injects via MCP `instructions`.
+- **`CHANGELOG.md` updated.** Every user-visible change adds a bullet under `## [Unreleased]`. Internal refactors and chores don't need an entry.
 - **For Explorer UI changes**, drop a screenshot or short clip in the PR.
 
 ## Releases
 
 Maintainer cuts releases. Workflow:
 
-1. Bump `pyproject.toml` to the new version.
-2. Merge as `chore: release vX.Y.Z`.
-3. Push the matching tag (`git tag vX.Y.Z && git push origin vX.Y.Z`).
+1. Move the contents of `## [Unreleased]` in `CHANGELOG.md` under a new `## [X.Y.Z] - YYYY-MM-DD` heading; leave `## [Unreleased]` empty.
+2. Bump `pyproject.toml` to the new version.
+3. Merge as `chore: release vX.Y.Z`.
+4. Push the matching tag (`git tag vX.Y.Z && git push origin vX.Y.Z`).
 
 Tag push triggers `docker.yml` (builds + pushes ghcr images) and `release.yml` (creates the GitHub Release with auto-generated notes). No manual release-notes editing needed unless something exceptional happened.
