@@ -1,6 +1,6 @@
 # Tool Reference
 
-**33 tools + 2 auto-loaded resources** for complete vault management,
+**34 tools + 2 auto-loaded resources** for complete vault management,
 self-maintaining knowledge wiki, and semantic retrieval.
 
 | Group | Tool | Description |
@@ -38,6 +38,7 @@ self-maintaining knowledge wiki, and semantic retrieval.
 | **Suggest** | `suggest_links` | Find note pairs that look related but aren't wikilinked |
 | | `apply_link_suggestion` | Append `See also: [[target]]` (idempotent) |
 | | `dismiss_link_suggestion` | Hide a pair from future suggestions (persistent) |
+| **Groundedness** | `check_groundedness` | Scan a draft answer for generic-language markers ("generally speaking", "based on my training", …) — non-empty hits mean retrieval probably failed |
 
 ## Resources (auto-loaded context)
 

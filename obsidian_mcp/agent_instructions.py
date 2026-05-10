@@ -112,6 +112,16 @@ Each result has a breakdown:
   note. `2` → two hops. Missing → unrelated in graph.
 - `recency` → freshness weight (180-day half-life).
 
+## Self-check before responding
+
+Before sending an answer that depends on vault content, optionally
+run `check_groundedness(answer)`. It scans the draft for
+register-shift markers ("generally speaking", "typically,", "based
+on my training", …) that usually signal you fell back on priors
+instead of the vault. Non-empty result → re-run `semantic_search` or
+`find_related_notes` and revise. Clean result is not a guarantee of
+correctness, only that you didn't trip the cheap tells.
+
 ## Hands off
 
 `.obsidian-mcp/` at the vault root is the local index/cache. Do not
