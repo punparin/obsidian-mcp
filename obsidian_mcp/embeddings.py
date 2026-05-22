@@ -15,7 +15,7 @@ Selection is driven by environment variables:
     OLLAMA_URL                base URL when EMBEDDER=ollama
                                (default http://localhost:11434)
     OPENAI_COMPATIBLE_URL     base URL when EMBEDDER=openai-compatible
-                               (default https://localhost:11434)
+                               (default http://localhost:11434)
     OPENAI_COMPATIBLE_API_KEY optional bearer token for OpenAI-compatible APIs
 
 Switching models is safe: ``VectorStore`` detects the change at startup
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 DEFAULT_DIM = 384
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
-DEFAULT_OPENAI_COMPATIBLE_URL = "https://localhost:11434"
+DEFAULT_OPENAI_COMPATIBLE_URL = "http://localhost:11434"
 
 
 class EmbeddingBackend(ABC):

@@ -89,7 +89,7 @@ OLLAMA_URL=http://desktop.local:11434        # default http://localhost:11434
 # OpenAI-compatible alternative:
 OBSIDIAN_EMBEDDER=openai-compatible
 OBSIDIAN_EMBEDDER_MODEL=text-embedding-3-small
-OPENAI_COMPATIBLE_URL=https://localhost:11434 # default https://localhost:11434
+OPENAI_COMPATIBLE_URL=http://localhost:11434  # default http://localhost:11434
 OPENAI_COMPATIBLE_API_KEY=...                # optional for local gateways
 ```
 

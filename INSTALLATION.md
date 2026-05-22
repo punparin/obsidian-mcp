@@ -202,7 +202,7 @@ Save the answer as `EMBEDDER` ∈ {`ollama`, `openai-compatible`, `fastembed`, `
 ### 4b. If `EMBEDDER=openai-compatible`, ask three follow-ups
 
 - **Base URL.** Prompt: *"What's the base URL of your OpenAI-compatible
-  embedding service? (default `https://localhost:11434`; use a hosted
+  embedding service? (default `http://localhost:11434`; use a hosted
   provider URL like `https://api.openai.com` if needed; the server will
   call `/v1/embeddings` under it)"* — save
   as `OPENAI_COMPATIBLE_URL`.
