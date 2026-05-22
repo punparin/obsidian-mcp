@@ -1,18 +1,22 @@
 """Embedding backends — thin abstraction so tests can swap in a fake.
 
 Default backend is ``FastEmbedBackend`` (ONNX-based, local, ~100MB
-download on first use). Set ``OBSIDIAN_EMBEDDER=ollama`` to point at a
-remote Ollama server instead — useful when the MCP runs on a low-power
-host (Pi) and you want a beefier model running on a desktop. A
-``FakeBackend`` is provided for tests.
+download on first use). Set ``OBSIDIAN_EMBEDDER=ollama`` or
+``OBSIDIAN_EMBEDDER=openai-compatible`` to point at a remote embedding
+service instead — useful when the MCP runs on a low-power host (Pi) and
+you want a beefier model running elsewhere. A ``FakeBackend`` is provided
+for tests.
 
 Selection is driven by environment variables:
 
-    OBSIDIAN_EMBEDDER         fastembed | ollama | fake | none
+    OBSIDIAN_EMBEDDER         fastembed | ollama | openai-compatible | fake | none
     OBSIDIAN_EMBEDDER_MODEL   model id (e.g. BAAI/bge-small-en-v1.5,
                               nomic-embed-text, mxbai-embed-large)
     OLLAMA_URL                base URL when EMBEDDER=ollama
-                              (default http://localhost:11434)
+                               (default http://localhost:11434)
+    OPENAI_COMPATIBLE_URL     base URL when EMBEDDER=openai-compatible
+                               (default https://localhost:11434)
+    OPENAI_COMPATIBLE_API_KEY optional bearer token for OpenAI-compatible APIs
 
 Switching models is safe: ``VectorStore`` detects the change at startup
 and clears the index so the reconcile loop re-embeds the vault.
@@ -35,6 +39,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 DEFAULT_DIM = 384
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
+DEFAULT_OPENAI_COMPATIBLE_URL = "https://localhost:11434"
 
 
 class EmbeddingBackend(ABC):
@@ -85,9 +90,9 @@ class FastEmbedBackend(EmbeddingBackend):
             raise RuntimeError(
                 "fastembed is not installed. The Docker image and the base "
                 "install no longer ship it. Either:\n"
-                "  - install the extra: pip install \".[fastembed]\"\n"
-                "  - use the remote backend: OBSIDIAN_EMBEDDER=ollama with "
-                "OBSIDIAN_EMBEDDER_MODEL + OLLAMA_URL\n"
+                '  - install the extra: pip install ".[fastembed]"\n'
+                "  - use a remote backend: OBSIDIAN_EMBEDDER=ollama or "
+                "openai-compatible with OBSIDIAN_EMBEDDER_MODEL + provider URL\n"
                 "  - disable semantic features: OBSIDIAN_EMBEDDER=none"
             ) from e
 
@@ -146,9 +151,7 @@ class OllamaBackend(EmbeddingBackend):
                 f"Ollama returned HTTP {e.code} from {self.base_url}: {e.read().decode('utf-8', errors='replace')}"
             ) from e
         except URLError as e:
-            raise RuntimeError(
-                f"could not reach Ollama at {self.base_url}: {e.reason}"
-            ) from e
+            raise RuntimeError(f"could not reach Ollama at {self.base_url}: {e.reason}") from e
         embeddings = body.get("embeddings")
         if not embeddings:
             raise RuntimeError(f"Ollama returned no embeddings (model={self.model_id}): {body}")
@@ -211,6 +214,77 @@ class OllamaBackend(EmbeddingBackend):
         )
 
 
+class OpenAICompatibleBackend(EmbeddingBackend):
+    """Embeddings via an OpenAI-compatible ``POST /v1/embeddings`` API."""
+
+    def __init__(
+        self,
+        model_id: str,
+        base_url: str = DEFAULT_OPENAI_COMPATIBLE_URL,
+        api_key: str | None = None,
+        timeout: float = 60.0,
+    ):
+        if not model_id:
+            raise ValueError("OpenAICompatibleBackend requires a model id")
+        self.model_id = model_id
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.timeout = timeout
+        self.dim: int = 0
+
+    @property
+    def embeddings_url(self) -> str:
+        if self.base_url.endswith("/v1"):
+            return f"{self.base_url}/embeddings"
+        return f"{self.base_url}/v1/embeddings"
+
+    def _post(self, inputs: list[str]) -> list[list[float]]:
+        payload = json.dumps({"model": self.model_id, "input": inputs}).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        req = Request(
+            self.embeddings_url,
+            data=payload,
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urlopen(req, timeout=self.timeout) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+        except HTTPError as e:
+            raise RuntimeError(
+                f"OpenAI-compatible embedder returned HTTP {e.code} from {self.base_url}: "
+                f"{e.read().decode('utf-8', errors='replace')}"
+            ) from e
+        except URLError as e:
+            raise RuntimeError(f"could not reach OpenAI-compatible embedder at {self.base_url}: {e.reason}") from e
+
+        data = body.get("data")
+        if not data:
+            raise RuntimeError(f"OpenAI-compatible embedder returned no embeddings (model={self.model_id}): {body}")
+        embeddings = [item.get("embedding") for item in data]
+        if len(embeddings) != len(inputs) or any(not vector for vector in embeddings):
+            raise RuntimeError(
+                f"OpenAI-compatible embedder returned malformed embeddings (model={self.model_id}): {body}"
+            )
+        return embeddings
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        vectors = self._post(texts)
+        if self.dim == 0:
+            self.dim = len(vectors[0])
+            logger.info(
+                "openai-compatible embedder ready (model=%s, url=%s, dim=%d)",
+                self.model_id,
+                self.base_url,
+                self.dim,
+            )
+        return vectors
+
+
 class FakeBackend(EmbeddingBackend):
     """Deterministic pseudo-embedding for tests.
 
@@ -259,6 +333,15 @@ def get_backend(name: str | None = None) -> EmbeddingBackend:
             )
         base_url = os.environ.get("OLLAMA_URL", DEFAULT_OLLAMA_URL)
         return OllamaBackend(model_id=model, base_url=base_url)
+    if choice in ("openai-compatible", "openai_compatible"):
+        model = os.environ.get("OBSIDIAN_EMBEDDER_MODEL")
+        if not model:
+            raise ValueError(
+                "OBSIDIAN_EMBEDDER=openai-compatible requires OBSIDIAN_EMBEDDER_MODEL (e.g. text-embedding-3-small)"
+            )
+        base_url = os.environ.get("OPENAI_COMPATIBLE_URL", DEFAULT_OPENAI_COMPATIBLE_URL)
+        api_key = os.environ.get("OPENAI_COMPATIBLE_API_KEY")
+        return OpenAICompatibleBackend(model_id=model, base_url=base_url, api_key=api_key)
     if choice == "fake":
         return FakeBackend()
     if choice == "none":
