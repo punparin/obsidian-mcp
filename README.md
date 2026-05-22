@@ -40,6 +40,9 @@ The agent picks the right tool (`list_notes`, `search`,
 
 For the full semantic-search experience, point at an Ollama server:
 `-e OBSIDIAN_EMBEDDER=ollama -e OBSIDIAN_EMBEDDER_MODEL=qwen3-embedding:8b -e OLLAMA_URL=http://desktop.local:11434`.
+You can also use an OpenAI-compatible `/v1/embeddings` endpoint with
+`OBSIDIAN_EMBEDDER=openai-compatible`, `OBSIDIAN_EMBEDDER_MODEL`,
+`OPENAI_COMPATIBLE_URL`, and optionally `OPENAI_COMPATIBLE_API_KEY`.
 See [`docs/semantic.md`](./docs/semantic.md) for the embedder
 selection table and recommended models.
 

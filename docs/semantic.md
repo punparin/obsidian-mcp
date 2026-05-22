@@ -69,11 +69,12 @@ lexical scoring.
 
 ## Embedder selection
 
-Two backends are available; pick one with `OBSIDIAN_EMBEDDER`:
+Pick a backend with `OBSIDIAN_EMBEDDER`:
 
 | `OBSIDIAN_EMBEDDER` | Where it runs | When to use |
 |---|---|---|
 | `ollama` (Docker default) | HTTP to a remote [Ollama](https://ollama.com) server | Recommended. Lets you pick any embedding model without bloating the MCP host. Required for the slim Docker image. |
+| `openai-compatible` | HTTP to a `/v1/embeddings` API | Use any OpenAI-compatible embedding service, including hosted providers and local gateways. |
 | `fastembed` (factory default when unset) | In-process ONNX, downloads `BAAI/bge-small-en-v1.5` (~130 MB) on first use | Single-host setups where you don't want a separate Ollama server. Requires `pip install ".[fastembed]"` — base install will fail to start with a hint pointing here. |
 | `fake` | Deterministic stub | Tests only |
 | `none` | — | Disable semantic features entirely |
@@ -84,6 +85,12 @@ Two backends are available; pick one with `OBSIDIAN_EMBEDDER`:
 OBSIDIAN_EMBEDDER=ollama
 OBSIDIAN_EMBEDDER_MODEL=qwen3-embedding:8b   # or :4b, bge-m3, mxbai-embed-large, ...
 OLLAMA_URL=http://desktop.local:11434        # default http://localhost:11434
+
+# OpenAI-compatible alternative:
+OBSIDIAN_EMBEDDER=openai-compatible
+OBSIDIAN_EMBEDDER_MODEL=text-embedding-3-small
+OPENAI_COMPATIBLE_URL=https://localhost:11434 # default https://localhost:11434
+OPENAI_COMPATIBLE_API_KEY=...                # optional for local gateways
 ```
 
 **Recommended models** (descending quality, all via Ollama unless noted):
