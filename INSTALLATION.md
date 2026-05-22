@@ -142,18 +142,21 @@ vault.
 
 ## Step 4 — Ask: semantic search?
 
-The server has three embedding backends. Ask the user:
+The server has four embedding backends. Ask the user:
 
-> *"Do you want semantic search over your vault? Three options:*
+> *"Do you want semantic search over your vault? Four options:*
 > *1. **`ollama` (recommended)** — best quality. Run [Ollama](https://ollama.com)*
 >    *locally (`ollama serve`) or on another box on your LAN, and use*
 >    *`qwen3-embedding` as the model. SOTA quality on MTEB, strong*
 >    *multilingual.*
-> *2. **`fastembed`** — fully self-contained Python install, downloads*
+> *2. **`openai-compatible`** — use any service that exposes the OpenAI*
+>    *`/v1/embeddings` API. Good when you already have a hosted provider*
+>    *or local gateway.*
+> *3. **`fastembed`** — fully self-contained Python install, downloads*
 >    *~130 MB `BAAI/bge-small-en-v1.5` on first use. English-only,*
 >    *lower quality than qwen3. Pick this only if you don't want to run*
 >    *Ollama at all.*
-> *3. **`none`** — skip semantic features; only lexical search and graph*
+> *4. **`none`** — skip semantic features; only lexical search and graph*
 >    *tools work."*
 
 If the user has no Ollama yet but is open to running it locally, point
@@ -161,7 +164,7 @@ them at the `ollama serve` quickstart and recommend `qwen3-embedding:4b`
 as the default model (good quality, modest disk/RAM). Wait for them to
 confirm Ollama is up before continuing.
 
-Save the answer as `EMBEDDER` ∈ {`ollama`, `fastembed`, `none`}.
+Save the answer as `EMBEDDER` ∈ {`ollama`, `openai-compatible`, `fastembed`, `none`}.
 
 ### 4a. If `EMBEDDER=ollama`, ask two follow-ups
 
@@ -196,14 +199,30 @@ Save the answer as `EMBEDDER` ∈ {`ollama`, `fastembed`, `none`}.
   $EMBEDDER_MODEL` on the Ollama host) and **wait for them to confirm
   before proceeding**.
 
-### 4b. If `EMBEDDER=fastembed` and `RUNTIME=docker`
+### 4b. If `EMBEDDER=openai-compatible`, ask three follow-ups
+
+- **Base URL.** Prompt: *"What's the base URL of your OpenAI-compatible
+  embedding service? (default `https://localhost:11434`; use a hosted
+  provider URL like `https://api.openai.com` if needed; the server will
+  call `/v1/embeddings` under it)"* — save
+  as `OPENAI_COMPATIBLE_URL`.
+
+- **Embedding model.** Prompt: *"Which embedding model should the
+  service use? (for example `text-embedding-3-small`, or your provider's
+  deployed model id)"* — save as `EMBEDDER_MODEL`.
+
+- **API key.** Prompt: *"Does this service need a bearer token? If yes,
+  provide it as `OPENAI_COMPATIBLE_API_KEY`; if it's a local gateway with
+  no auth, leave it blank."*
+
+### 4c. If `EMBEDDER=fastembed` and `RUNTIME=docker`
 
 The default Docker image does **not** include `fastembed`. Tell the
 user: *"The Docker image ships without fastembed. Switch to `ollama`,
 `none`, or use the local runtime to keep fastembed."* Re-ask Step 2 or
 Step 4 based on what they want.
 
-### 4c. If `EMBEDDER=none`
+### 4d. If `EMBEDDER=none`
 
 Nothing extra to ask. The semantic tools will be no-ops.
 
@@ -243,8 +262,13 @@ user's answers:
 #   ollama:    -e OBSIDIAN_EMBEDDER=ollama \
 #              -e OBSIDIAN_EMBEDDER_MODEL=$EMBEDDER_MODEL \
 #              -e OLLAMA_URL=$OLLAMA_URL
+#   openai-compatible:
+#              -e OBSIDIAN_EMBEDDER=openai-compatible \
+#              -e OBSIDIAN_EMBEDDER_MODEL=$EMBEDDER_MODEL \
+#              -e OPENAI_COMPATIBLE_URL=$OPENAI_COMPATIBLE_URL \
+#              -e OPENAI_COMPATIBLE_API_KEY=$OPENAI_COMPATIBLE_API_KEY
 #   none:      -e OBSIDIAN_EMBEDDER=none
-#   fastembed: (not supported on Docker — see 4b)
+#   fastembed: (not supported on Docker — see 4c)
 
 claude mcp add -s "$SCOPE" obsidian -- \
   docker run -i --rm \
@@ -270,7 +294,7 @@ python3 -m venv .venv
 Pick the `pip install` command based on `EMBEDDER`:
 
 - `EMBEDDER=fastembed` → `.venv/bin/pip install -e ".[fastembed]"`
-- `EMBEDDER=ollama` or `EMBEDDER=none` → `.venv/bin/pip install -e .`
+- `EMBEDDER=ollama`, `EMBEDDER=openai-compatible`, or `EMBEDDER=none` → `.venv/bin/pip install -e .`
 
 Register with Claude Code. Build env flags:
 
@@ -281,6 +305,11 @@ Register with Claude Code. Build env flags:
 #   ollama:    -e OBSIDIAN_EMBEDDER=ollama \
 #              -e OBSIDIAN_EMBEDDER_MODEL=$EMBEDDER_MODEL \
 #              -e OLLAMA_URL=$OLLAMA_URL
+#   openai-compatible:
+#              -e OBSIDIAN_EMBEDDER=openai-compatible \
+#              -e OBSIDIAN_EMBEDDER_MODEL=$EMBEDDER_MODEL \
+#              -e OPENAI_COMPATIBLE_URL=$OPENAI_COMPATIBLE_URL \
+#              -e OPENAI_COMPATIBLE_API_KEY=$OPENAI_COMPATIBLE_API_KEY
 #   fastembed: -e OBSIDIAN_EMBEDDER=fastembed
 #   none:      -e OBSIDIAN_EMBEDDER=none
 
