@@ -12,4 +12,4 @@ build/
 # Local-only operator/agent notes — not for public distribution.
 # Runtime agent rules ship via MCP `instructions` from
 # obsidian_mcp/agent_instructions.py.
-AGENT.md
+AGENTS.md

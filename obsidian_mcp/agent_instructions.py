@@ -6,7 +6,7 @@ copying anything into their own ``CLAUDE.md`` / Cursor rules.
 
 Kept terse on purpose — every byte here ships in every session. For
 the full operator-facing reference (tuning, install, troubleshooting),
-see ``AGENT.md`` and ``README.md``.
+see ``AGENTS.md`` and ``README.md``.
 """
 
 INSTRUCTIONS = """\
