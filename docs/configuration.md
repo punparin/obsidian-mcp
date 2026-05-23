@@ -19,7 +19,8 @@ docker run -i --rm \
 
 ## Embedding backend
 
-Set `OBSIDIAN_EMBEDDER` to one of `ollama`, `fastembed`, or `none`.
+Set `OBSIDIAN_EMBEDDER` to one of `ollama`, `openai-compatible`,
+`fastembed`, or `none`.
 See [`semantic.md`](./semantic.md#embedder-selection) for the full
 table and recommended models.
 

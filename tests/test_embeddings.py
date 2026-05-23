@@ -21,6 +21,7 @@ from obsidian_mcp.embeddings import (
     FakeBackend,
     FastEmbedBackend,
     OllamaBackend,
+    OpenAICompatibleBackend,
     batched,
     get_backend,
 )
@@ -131,9 +132,11 @@ class TestOllamaHealthCheck:
         backend = OllamaBackend(model_id="qwen3-embedding:8b", base_url="http://x:11434")
         with patch(
             "obsidian_mcp.embeddings.urlopen",
-            return_value=_stub_response({
-                "models": [{"name": "qwen3-embedding:8b"}, {"name": "llama3:latest"}],
-            }),
+            return_value=_stub_response(
+                {
+                    "models": [{"name": "qwen3-embedding:8b"}, {"name": "llama3:latest"}],
+                }
+            ),
         ):
             ok, detail = backend.health_check()
         assert ok
@@ -176,6 +179,77 @@ class TestOllamaHealthCheck:
         assert "llama3:latest" in detail  # lists what *is* available
 
 
+class TestOpenAICompatibleBackend:
+    def test_embed_posts_correct_shape_and_probes_dim(self):
+        backend = OpenAICompatibleBackend(
+            model_id="text-embedding-3-small",
+            base_url="https://embedding.example.com/api",
+            api_key="sk-test",
+        )
+        captured = {}
+
+        def fake_urlopen(req, timeout=None):
+            captured["url"] = req.full_url
+            captured["body"] = json.loads(req.data.decode("utf-8"))
+            captured["method"] = req.get_method()
+            captured["auth"] = req.headers["Authorization"]
+            return _stub_response(
+                {
+                    "data": [
+                        {"index": 0, "embedding": [0.1, 0.2, 0.3]},
+                        {"index": 1, "embedding": [0.4, 0.5, 0.6]},
+                    ],
+                    "model": "text-embedding-3-small",
+                    "object": "list",
+                }
+            )
+
+        with patch("obsidian_mcp.embeddings.urlopen", fake_urlopen):
+            vectors = backend.embed(["one", "two"])
+
+        assert captured["url"] == "https://embedding.example.com/api/v1/embeddings"
+        assert captured["method"] == "POST"
+        assert captured["body"] == {"model": "text-embedding-3-small", "input": ["one", "two"]}
+        assert captured["auth"] == "Bearer sk-test"
+        assert vectors == [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
+        assert backend.dim == 3
+
+    def test_empty_input_short_circuits(self):
+        backend = OpenAICompatibleBackend(model_id="text-embedding-3-small")
+        with patch("obsidian_mcp.embeddings.urlopen", side_effect=AssertionError("called")):
+            assert backend.embed([]) == []
+
+    def test_strips_trailing_slash_from_base_url(self):
+        b = OpenAICompatibleBackend(model_id="m", base_url="https://embedding.example.com/")
+        assert b.base_url == "https://embedding.example.com"
+
+    def test_accepts_v1_base_url(self):
+        b = OpenAICompatibleBackend(model_id="m", base_url="https://embedding.example.com/v1")
+        assert b.embeddings_url == "https://embedding.example.com/v1/embeddings"
+
+    def test_missing_data_field_raises(self):
+        backend = OpenAICompatibleBackend(model_id="m")
+        with patch(
+            "obsidian_mcp.embeddings.urlopen",
+            return_value=_stub_response({"error": {"message": "model not found"}}),
+        ):
+            with pytest.raises(RuntimeError, match="no embeddings"):
+                backend.embed(["x"])
+
+    def test_malformed_embeddings_raise(self):
+        backend = OpenAICompatibleBackend(model_id="m")
+        with patch(
+            "obsidian_mcp.embeddings.urlopen",
+            return_value=_stub_response({"data": [{"index": 0, "embedding": [0.1]}]}),
+        ):
+            with pytest.raises(RuntimeError, match="malformed embeddings"):
+                backend.embed(["x", "y"])
+
+    def test_requires_model_id(self):
+        with pytest.raises(ValueError, match="model id"):
+            OpenAICompatibleBackend(model_id="")
+
+
 class TestGetBackend:
     def test_default_returns_fastembed(self, monkeypatch):
         monkeypatch.delenv("OBSIDIAN_EMBEDDER", raising=False)
@@ -209,6 +283,30 @@ class TestGetBackend:
         monkeypatch.delenv("OLLAMA_URL", raising=False)
         b = get_backend()
         assert b.base_url == emb.DEFAULT_OLLAMA_URL
+
+    def test_openai_compatible_requires_model(self, monkeypatch):
+        monkeypatch.setenv("OBSIDIAN_EMBEDDER", "openai-compatible")
+        monkeypatch.delenv("OBSIDIAN_EMBEDDER_MODEL", raising=False)
+        with pytest.raises(ValueError, match="OBSIDIAN_EMBEDDER_MODEL"):
+            get_backend()
+
+    def test_openai_compatible_uses_env_url_key_and_model(self, monkeypatch):
+        monkeypatch.setenv("OBSIDIAN_EMBEDDER", "openai-compatible")
+        monkeypatch.setenv("OBSIDIAN_EMBEDDER_MODEL", "text-embedding-3-small")
+        monkeypatch.setenv("OPENAI_COMPATIBLE_URL", "https://embedding.example.com")
+        monkeypatch.setenv("OPENAI_COMPATIBLE_API_KEY", "sk-test")
+        b = get_backend()
+        assert isinstance(b, OpenAICompatibleBackend)
+        assert b.model_id == "text-embedding-3-small"
+        assert b.base_url == "https://embedding.example.com"
+        assert b.api_key == "sk-test"
+
+    def test_openai_compatible_default_url(self, monkeypatch):
+        monkeypatch.setenv("OBSIDIAN_EMBEDDER", "openai-compatible")
+        monkeypatch.setenv("OBSIDIAN_EMBEDDER_MODEL", "text-embedding-3-small")
+        monkeypatch.delenv("OPENAI_COMPATIBLE_URL", raising=False)
+        b = get_backend()
+        assert b.base_url == emb.DEFAULT_OPENAI_COMPATIBLE_URL
 
     def test_none_disables_semantic(self, monkeypatch):
         monkeypatch.setenv("OBSIDIAN_EMBEDDER", "none")
