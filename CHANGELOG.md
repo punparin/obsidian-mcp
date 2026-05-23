@@ -6,6 +6,17 @@ this project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-05-23
+
+### Added
+
+- `openai-compatible` embedder backend — connects to any service
+  exposing the OpenAI `/v1/embeddings` API (hosted providers or
+  local gateways). Configured via
+  `OBSIDIAN_EMBEDDER=openai-compatible`, `OBSIDIAN_EMBEDDER_MODEL`,
+  `OPENAI_COMPATIBLE_URL`, and optional `OPENAI_COMPATIBLE_API_KEY`.
+  (#61)
+
 ## [0.10.0] - 2026-05-10
 
 ### Added
