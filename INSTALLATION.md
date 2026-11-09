@@ -130,9 +130,9 @@ confirmation** before creating the file. If `<VAULT_PATH>/.obsidian-mcp/`
 doesn't exist yet, `mkdir -p` it first. If the file already exists,
 read it, ask whether to merge or replace, and don't clobber silently.
 
-Note: ignore = "don't surface in scans". Explicit `read_note(path)` /
-`write_note(path)` calls still work on ignored paths so the agent can
-poke at them when the user asks. A malformed YAML config fails loudly
+Note: ignored paths are fully off-limits to the agent — they're
+skipped by scans *and* explicit `read_note(path)` / `write_note(path)`
+calls are refused. A malformed YAML config fails loudly
 at server startup, so any typo will be caught early.
 
 If the user says no, skip this — the server will index the whole
@@ -415,7 +415,7 @@ If yes, mirror the runtime choice from Step 2:
 - **Docker:**
   ```sh
   docker pull ghcr.io/punparin/obsidian-mcp-explorer:latest
-  docker run --rm -p 8765:8765 -v "$VAULT_PATH:/vault" \
+  docker run --rm -p 127.0.0.1:8765:8765 -v "$VAULT_PATH:/vault" \
     ghcr.io/punparin/obsidian-mcp-explorer:latest
   ```
 - **Local:**

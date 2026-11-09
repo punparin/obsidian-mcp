@@ -54,10 +54,8 @@ def list_inbox(vault: "Vault") -> list[dict]:
         return []
 
     items = []
-    for f in sorted(inbox.rglob("*.md")):
-        rel = str(f.relative_to(vault.root))
-        if vault.is_ignored(rel):
-            continue
+    for f in sorted(vault._iter_markdown(inbox)):
+        rel = f.relative_to(vault.root).as_posix()
         try:
             content = f.read_text(encoding="utf-8")
             preview = content.strip()[:300]
@@ -148,23 +146,13 @@ def find_related_notes(vault: "Vault", content: str, limit: int = 10) -> list[di
 
 def archive_inbox_note(vault: "Vault", path: str) -> str:
     """Move a note from inbox/ to archive/YYYY-MM/."""
-    if not path.startswith(f"{INBOX_FOLDER}/"):
-        raise ValueError(f"Not an inbox note: {path}")
-
     src = vault._resolve_path(path)
-    if not src.exists():
-        raise FileNotFoundError(f"Inbox note not found: {path}")
-
-    today = date.today()
-    archive_subdir = f"{ARCHIVE_FOLDER}/{today.strftime('%Y-%m')}"
-    dest_rel = f"{archive_subdir}/{Path(path).name}"
-    dest = vault._resolve_path(dest_rel)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-
-    src.rename(dest)
-
-    # Update index
-    vault.index.pop(path, None)
-    vault.index[dest_rel] = vault._index_single(dest_rel)
-
+    rel = vault._to_relative(src)
+    # Check the resolved path so `inbox/../secret.md` can't sneak through.
+    if not rel.startswith(f"{INBOX_FOLDER}/"):
+        raise ValueError(f"Not an inbox note: {path}")
+    dest_rel = f"{ARCHIVE_FOLDER}/{date.today():%Y-%m}/{Path(rel).name}"
+    # move_note handles the index, embeddings, and refuses to clobber an
+    # existing archive file.
+    vault.move_note(rel, dest_rel)
     return f"Archived: {path} -> {dest_rel}"

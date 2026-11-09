@@ -8,13 +8,30 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ..links import get_graph
-from ..vault import Vault
+from ..vault import AccessDenied, Vault, env_flag
+
+# Only answer requests addressed to these hostnames. Blocks DNS-rebinding,
+# where a malicious website points its own domain at 127.0.0.1 to read
+# your vault through the browser. Add more via OBSIDIAN_EXPLORER_HOSTS.
+DEFAULT_ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "
+        "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +67,7 @@ def _build_vault() -> Vault:
         raise RuntimeError(
             "OBSIDIAN_VAULT_PATH is not set — point it at your Obsidian vault."
         )
-    v = Vault(vault_path)
+    v = Vault(vault_path, read_only=env_flag("OBSIDIAN_READ_ONLY"))
     # Watcher keeps the index live; semantic stack reuses the same
     # SQLite index the MCP server uses, so the demo and Claude Code can
     # share state during a presentation.
@@ -66,7 +83,17 @@ def _build_vault() -> Vault:
 
 def create_app() -> FastAPI:
     vault = _build_vault()
-    app = FastAPI(title="obsidian-mcp explorer")
+    # No interactive API docs: nothing should be reachable that the UI doesn't use.
+    app = FastAPI(title="obsidian-mcp explorer", docs_url=None, redoc_url=None, openapi_url=None)
+    extra_hosts = [h.strip() for h in os.environ.get("OBSIDIAN_EXPLORER_HOSTS", "").split(",") if h.strip()]
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=DEFAULT_ALLOWED_HOSTS + extra_hosts)
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.update(SECURITY_HEADERS)
+        return response
+
     static_dir = Path(__file__).parent / "static"
 
     @app.get("/")
@@ -113,6 +140,8 @@ def create_app() -> FastAPI:
             msg = vault.apply_link_suggestion(req.source, req.target)
         except FileNotFoundError as exc:
             raise HTTPException(404, str(exc)) from None
+        except AccessDenied as exc:
+            raise HTTPException(403, str(exc)) from None
         return {"message": msg}
 
     @app.get("/api/note")
@@ -121,6 +150,8 @@ def create_app() -> FastAPI:
             content = vault.read_note(path)
         except FileNotFoundError:
             raise HTTPException(404, f"note not found: {path}") from None
+        except AccessDenied as exc:
+            raise HTTPException(403, str(exc)) from None
         entry = vault.index.get(path)
         return {
             "path": path,

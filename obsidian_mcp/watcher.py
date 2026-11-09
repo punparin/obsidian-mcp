@@ -40,11 +40,9 @@ class _VaultEventHandler(FileSystemEventHandler):
             rel = str(abs_path.relative_to(self._vault.root))
         except ValueError:
             return None
-        # Only `.md` files matter for the index; ignore predicate covers
-        # hidden dirs, tempfiles, and user-defined globs.
-        if not rel.endswith(".md"):
-            return None
-        if self._vault.is_ignored(rel):
+        # Same access rules as the tools: .md only, no hidden dirs,
+        # nothing matched by the ignore config.
+        if not self._vault.is_allowed_note(rel):
             return None
         return rel
 

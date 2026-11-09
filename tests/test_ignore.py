@@ -116,12 +116,11 @@ class TestVaultIgnoreIntegration:
         results = v.search_fulltext("Old")
         assert all(r["path"] != "archive/old.md" for r in results)
 
-    def test_explicit_read_still_works_for_ignored_path(self, tmp_path):
+    def test_explicit_read_blocked_for_ignored_path(self, tmp_path):
         v = self._make_vault(tmp_path, "ignore:\n  - archive/**\n")
-        # The model can still poke at an archived note when it explicitly
-        # asks for the path — ignore only suppresses scans.
-        content = v.read_note("archive/old.md")
-        assert "Old" in content
+        # Ignored paths are fully off-limits, not just hidden from scans.
+        with pytest.raises(ValueError, match="ignore config"):
+            v.read_note("archive/old.md")
 
     def test_builtin_dot_dirs_ignored_without_config(self, tmp_path):
         # No user config; built-ins should still kick in.

@@ -21,7 +21,7 @@ OBSIDIAN_VAULT_PATH=/path/to/vault .venv/bin/python -m obsidian_mcp.explorer
 
 ```bash
 docker pull ghcr.io/punparin/obsidian-mcp-explorer:latest
-docker run --rm -p 8765:8765 -v /path/to/your/vault:/vault \
+docker run --rm -p 127.0.0.1:8765:8765 -v /path/to/your/vault:/vault \
   ghcr.io/punparin/obsidian-mcp-explorer:latest
 # open http://127.0.0.1:8765
 ```
@@ -30,8 +30,15 @@ Or build locally:
 
 ```bash
 docker build -f Dockerfile.explorer -t obsidian-mcp-explorer .
-docker run --rm -p 8765:8765 -v /path/to/vault:/vault obsidian-mcp-explorer
+docker run --rm -p 127.0.0.1:8765:8765 -v /path/to/vault:/vault obsidian-mcp-explorer
 ```
+
+Always publish the port as `127.0.0.1:8765:8765` so only your own
+machine can reach it — the Explorer has no login. It also only answers
+requests addressed to `localhost` / `127.0.0.1` (this blocks malicious
+websites from reaching it via DNS rebinding); to serve it under another
+hostname, set `OBSIDIAN_EXPLORER_HOSTS=myhost.local` (comma-separated).
+`OBSIDIAN_READ_ONLY=1` disables the "apply suggestion" button.
 
 The Explorer imports `Vault` directly — same SQLite index as the MCP
 server, so changes made through any MCP client or in Obsidian show up

@@ -37,6 +37,7 @@ class TestWriteNote:
         assert (tmp_vault / "deep" / "nested" / "note.md").exists()
 
     def test_overwrites_existing(self, vault):
+        vault.read_note("note1.md")
         vault.write_note("note1.md", "Overwritten")
         assert vault.read_note("note1.md") == "Overwritten"
 
@@ -90,10 +91,11 @@ class TestWriteConflictDetection:
         vault.write_note("note1.md", "MCP overwrite", force=True)
         assert (tmp_vault / "note1.md").read_text() == "MCP overwrite"
 
-    def test_write_without_prior_read_to_existing_allowed(self, vault):
-        # No read happened in this server lifetime — nothing to compare against,
-        # so we don't want to block the write (Claude may create-via-template etc.).
-        vault.write_note("note1.md", "fresh content")
+    def test_write_without_prior_read_to_existing_refused(self, vault):
+        # Blind overwrites of a note the agent never looked at are refused.
+        with pytest.raises(NoteConflictError, match="hasn't been read"):
+            vault.write_note("note1.md", "fresh content")
+        vault.write_note("note1.md", "fresh content", force=True)
         assert vault.read_note("note1.md") == "fresh content"
 
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Obsidian MCP — Vault Explorer</title>
-<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js" integrity="sha384-IWROdLKRsN1UuJywMlWl7/blXQ8GEooN2n7dzTxfEPd7ybYIKCUJ2Ol/1Gpf3YV4" crossorigin="anonymous"></script>
 <style>
   :root {
     --bg: #0f1419;
@@ -667,7 +667,7 @@ async function doSearch() {
     renderResults(lastResults);
     highlightOnGraph(lastResults);
   } catch (err) {
-    resBox.innerHTML = `<div class="empty">error: ${err.message}</div>`;
+    resBox.innerHTML = `<div class="empty">error: ${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -763,7 +763,7 @@ async function loadSuggestions() {
     const data = await r.json();
     renderSuggestions(data.results || []);
   } catch (err) {
-    box.innerHTML = `<div class="empty">error: ${err.message}</div>`;
+    box.innerHTML = `<div class="empty">error: ${escapeHtml(err.message)}</div>`;
   }
 }
 

@@ -6,10 +6,10 @@ self-maintaining knowledge wiki, and semantic retrieval.
 | Group | Tool | Description |
 |---|---|---|
 | File ops | `read_note` | Read note by path. Records mtime for write-conflict detection |
-| | `write_note` | Create/overwrite note. Raises `NoteConflictError` (with the current disk content) if the file moved under you since the last `read_note` |
+| | `write_note` | Create/overwrite note. Raises `NoteConflictError` if the note exists but wasn't `read_note`'d first, or (with the current disk content) if it changed on disk since that read |
 | | `append_note` | Append to note |
 | | `list_notes` | List `.md` files in folder. `include_frontmatter=True` returns parsed YAML alongside each path so triage avoids a per-note follow-up read |
-| | `delete_note` | Delete a note |
+| | `delete_note` | Move a note to the vault's `.trash/` folder (recoverable) |
 | | `move_note` | Rename/move + auto-update wikilinks |
 | Search | `search` | Full-text search. `path=` scopes to a subtree (e.g. `path="projects/"`) |
 | | `search_by_tags` | Find by `#tags` or frontmatter tags. Supports `path=` subtree scope |

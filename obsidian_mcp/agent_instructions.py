@@ -63,8 +63,8 @@ When asked "is there a note about X already?":
 
 ## Conflict handling
 
-`write_note` refuses to clobber a note edited on disk since the last
-`read_note` on the same path. The `NoteConflictError` carries the
+`write_note` refuses to overwrite an existing note you haven't
+`read_note`'d in this session, or one edited on disk since that read. The `NoteConflictError` carries the
 current on-disk content (capped ~4 KB) so you can merge in place
 without a follow-up `read_note`. Pass `force=True` only when you
 mean to overwrite.

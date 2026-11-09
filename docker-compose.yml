@@ -5,4 +5,13 @@ services:
       - ${OBSIDIAN_VAULT_PATH:-./_test_vault}:/vault
     environment:
       - OBSIDIAN_VAULT_PATH=/vault
+      # Uncomment to expose read-only tools only:
+      # - OBSIDIAN_READ_ONLY=1
     stdin_open: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

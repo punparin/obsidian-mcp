@@ -11,41 +11,21 @@ from .agent_instructions import INSTRUCTIONS as _AGENT_INSTRUCTIONS
 from .frontmatter import get_frontmatter as _get_fm
 from .frontmatter import update_frontmatter as _update_fm
 from .groundedness import check_register as _check_register
-from .ingest import (
-    archive_inbox_note as _archive_inbox,
-)
-from .ingest import (
-    find_related_notes as _find_related,
-)
-from .ingest import (
-    list_inbox as _list_inbox,
-)
+from .ingest import archive_inbox_note as _archive_inbox
+from .ingest import find_related_notes as _find_related
+from .ingest import list_inbox as _list_inbox
 from .links import extract_wikilinks as _wikilinks
 from .links import get_backlinks as _backlinks
 from .links import get_graph as _graph
-from .lint import (
-    find_broken_wikilinks as _broken_wikilinks,
-)
-from .lint import (
-    find_duplicate_titles as _duplicate_titles,
-)
-from .lint import (
-    find_stale_notes as _stale_notes,
-)
-from .lint import (
-    lint_vault as _lint_vault,
-)
-from .schema import (
-    get_schema as _get_schema,
-)
-from .schema import (
-    validate_note_schema as _validate_note,
-)
-from .schema import (
-    validate_vault_schema as _validate_vault,
-)
+from .lint import find_broken_wikilinks as _broken_wikilinks
+from .lint import find_duplicate_titles as _duplicate_titles
+from .lint import find_stale_notes as _stale_notes
+from .lint import lint_vault as _lint_vault
+from .schema import get_schema as _get_schema
+from .schema import validate_note_schema as _validate_note
+from .schema import validate_vault_schema as _validate_vault
 from .templates import create_from_template as _from_template
-from .vault import Vault
+from .vault import Vault, env_flag
 
 # Logging to stderr (STDIO transport requirement)
 logging.basicConfig(
@@ -61,7 +41,10 @@ if not vault_path:
     logger.error("OBSIDIAN_VAULT_PATH environment variable not set")
     sys.exit(1)
 
-vault = Vault(vault_path)
+READ_ONLY = env_flag("OBSIDIAN_READ_ONLY")
+vault = Vault(vault_path, read_only=READ_ONLY)
+if READ_ONLY:
+    logger.info("read-only mode: write tools are not exposed")
 vault.start_watching()
 try:
     if vault.enable_semantic():
@@ -75,6 +58,19 @@ except Exception:
 mcp = FastMCP("obsidian", instructions=_AGENT_INSTRUCTIONS)
 
 
+def write_tool(fn):
+    """Register a tool that modifies the vault — skipped entirely in read-only
+    mode so the agent never even sees it. (Vault also enforces read-only.)"""
+    return fn if READ_ONLY else mcp.tool()(fn)
+
+
+def _json_object(raw: str, name: str) -> dict:
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise ValueError(f"{name} must be a JSON object")
+    return value
+
+
 # ── Core File Operations ──────────────────────────────────────────────
 
 
@@ -84,7 +80,7 @@ async def read_note(path: str) -> str:
     return vault.read_note(path)
 
 
-@mcp.tool()
+@write_tool
 async def write_note(path: str, content: str, force: bool = False) -> str:
     """Create or overwrite a note. Creates parent directories if needed.
 
@@ -97,7 +93,7 @@ async def write_note(path: str, content: str, force: bool = False) -> str:
     return vault.write_note(path, content, force=force)
 
 
-@mcp.tool()
+@write_tool
 async def append_note(path: str, content: str) -> str:
     """Append content to the end of an existing note. Creates the note if it doesn't exist."""
     return vault.append_note(path, content)
@@ -119,13 +115,13 @@ async def list_notes(folder: str = "", include_frontmatter: bool = False) -> str
     return "\n".join(notes)
 
 
-@mcp.tool()
+@write_tool
 async def delete_note(path: str) -> str:
-    """Delete a note from the vault."""
+    """Delete a note (moves it to the vault's .trash/ folder, so it can be restored)."""
     return vault.delete_note(path)
 
 
-@mcp.tool()
+@write_tool
 async def move_note(source: str, destination: str) -> str:
     """Move/rename a note and update all wikilinks across the vault that reference it."""
     return vault.move_note(source, destination)
@@ -197,11 +193,11 @@ async def get_note_frontmatter(path: str) -> str:
     return json.dumps(fm, indent=2, default=str)
 
 
-@mcp.tool()
+@write_tool
 async def update_note_frontmatter(path: str, updates: str) -> str:
     """Update frontmatter properties on a note. Pass updates as JSON string. Set a key to null to remove it."""
     content = vault.read_note(path)
-    updates_dict = json.loads(updates)
+    updates_dict = _json_object(updates, "updates")
     new_content = _update_fm(content, updates_dict)
     vault.write_note(path, new_content)
     return f"Frontmatter updated: {path}"
@@ -244,7 +240,7 @@ async def get_orphan_notes() -> str:
 # ── Templates ──────────────────────────────────────────────────────────
 
 
-@mcp.tool()
+@write_tool
 async def create_note_from_template(
     template_path: str,
     new_note_path: str,
@@ -254,7 +250,7 @@ async def create_note_from_template(
 
     variables: JSON string of key-value pairs (e.g., '{"project": "My Project"}')
     """
-    vars_dict = json.loads(variables)
+    vars_dict = {k: str(v) for k, v in _json_object(variables, "variables").items()}
     content = _from_template(vault, template_path, new_note_path, vars_dict)
     return f"Created from template: {new_note_path}\n\n{content}"
 
@@ -363,7 +359,7 @@ async def find_related_notes(content: str, limit: int = 10) -> str:
     return json.dumps(matches, indent=2, default=str)
 
 
-@mcp.tool()
+@write_tool
 async def archive_inbox_note(path: str) -> str:
     """Move a processed note from inbox/ to archive/YYYY-MM/. Use after ingesting its content into the wiki."""
     return _archive_inbox(vault, path)
@@ -431,7 +427,7 @@ async def suggest_links(path: str = "", limit: int = 25, min_score: float = 0.55
     return json.dumps(results, indent=2, default=str)
 
 
-@mcp.tool()
+@write_tool
 async def apply_link_suggestion(source: str, target: str) -> str:
     """Append a wikilink from ``source`` to ``target`` (idempotent).
 
@@ -502,4 +498,4 @@ async def list_mocs() -> str:
 # ── Entry Point ────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run(show_banner=False)

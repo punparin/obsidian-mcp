@@ -1,18 +1,22 @@
 FROM python:3.13-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY obsidian_mcp/ obsidian_mcp/
+# Same policy as the MCP image: runtime deps only, no fastembed.
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e ".[explorer]"
+COPY obsidian_mcp/ obsidian_mcp/
+RUN pip install --no-cache-dir ".[explorer]" && rm -rf /app/obsidian_mcp
 
-# Explorer image follows the same no-fastembed policy as the MCP image —
-# semantic features rely on a remote Ollama server.
+RUN useradd --uid 1000 --no-create-home --shell /usr/sbin/nologin obsidian
+USER 1000:1000
+
 ENV OBSIDIAN_VAULT_PATH=/vault
 ENV OBSIDIAN_EMBEDDER=ollama
 EXPOSE 8765
 
+# 0.0.0.0 is inside the container only. Publish it to localhost on the
+# host: `-p 127.0.0.1:8765:8765` (never plain `-p 8765:8765`).
 ENTRYPOINT ["python", "-m", "obsidian_mcp.explorer", "--host", "0.0.0.0", "--port", "8765"]

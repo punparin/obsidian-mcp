@@ -26,6 +26,8 @@ def create_from_template(
 
     Returns the content of the created note.
     """
+    if vault._resolve_path(new_note_path).exists():
+        raise FileExistsError(f"Note already exists: {new_note_path}")
     template_content = vault.read_note(template_path)
 
     now = datetime.now()

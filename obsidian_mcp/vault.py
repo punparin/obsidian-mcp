@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import threading
 from dataclasses import asdict, dataclass, field
@@ -24,6 +25,23 @@ if TYPE_CHECKING:
 
 
 _CONFLICT_CONTENT_CAP = 4096
+
+# Hard cap on a single note read or write. Keeps a confused (or
+# prompt-injected) agent from filling the disk or blowing up memory.
+MAX_NOTE_BYTES = int(os.environ.get("OBSIDIAN_MAX_NOTE_BYTES", 5 * 1024 * 1024))
+
+# Obsidian's own trash folder. delete_note moves notes here instead of
+# unlinking them, so a bad delete is always recoverable.
+TRASH_DIR = ".trash"
+
+
+def env_flag(name: str) -> bool:
+    """True when env var ``name`` is set to a truthy value (1/true/yes/on)."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+class AccessDenied(ValueError):
+    """Raised when a path is outside what the agent is allowed to touch."""
 
 
 class NoteConflictError(RuntimeError):
@@ -74,11 +92,22 @@ def _frontmatter_matches(fm: dict, key: str, value: str) -> bool:
     return needle in str(fm_value).lower()
 
 
+def _check_size(content: str) -> None:
+    if len(content.encode("utf-8")) > MAX_NOTE_BYTES:
+        raise ValueError(f"Content is larger than {MAX_NOTE_BYTES} bytes")
+
+
 class Vault:
     """Central abstraction for an Obsidian vault."""
 
-    def __init__(self, vault_path: str | Path, ignore: IgnoreMatcher | None = None):
+    def __init__(
+        self,
+        vault_path: str | Path,
+        ignore: IgnoreMatcher | None = None,
+        read_only: bool = False,
+    ):
         self.root = Path(vault_path).resolve()
+        self.read_only = read_only
         if not self.root.is_dir():
             raise ValueError(f"Vault path does not exist: {self.root}")
         # Built-ins (`.obsidian/`, `.git/`, our own `.obsidian-mcp/`,
@@ -101,30 +130,65 @@ class Vault:
         self._embed_queue: "EmbedQueue" | None = None
 
     # -- Path security --
+    #
+    # Every path the agent hands us goes through _resolve_path. The rules:
+    #   * must stay inside the vault after resolving `..` and symlinks
+    #   * no hidden segment anywhere (.obsidian/, .git/, .trash/,
+    #     .obsidian-mcp/, ...) — .obsidian/plugins holds code Obsidian runs
+    #   * note paths must end in .md
+    #   * paths matched by the ignore config are off-limits
 
-    def _resolve_path(self, relative: str) -> Path:
-        """Resolve relative path and ensure it stays within the vault."""
+    def _resolve_path(self, relative: str, *, note: bool = True) -> Path:
+        """Resolve an agent-supplied path, or raise AccessDenied.
+
+        ``note=True`` (default) means the path must be a ``.md`` file;
+        ``note=False`` is for folder arguments (list/search scopes).
+        """
+        if not isinstance(relative, str) or "\x00" in relative:
+            raise AccessDenied("Invalid path")
+        if Path(relative).is_absolute():
+            raise AccessDenied(f"Path must be relative to the vault: {relative}")
         resolved = (self.root / relative).resolve()
-        if not str(resolved).startswith(str(self.root)):
-            raise ValueError(f"Path escapes vault: {relative}")
+        if not resolved.is_relative_to(self.root):
+            raise AccessDenied(f"Path escapes vault: {relative}")
+        rel = resolved.relative_to(self.root).as_posix()
+        if rel == ".":
+            rel = ""
+        if any(part.startswith(".") for part in Path(rel).parts):
+            raise AccessDenied(f"Hidden files and folders are off-limits: {relative}")
+        if note:
+            if resolved.suffix.lower() != ".md":
+                raise AccessDenied(f"Only .md notes are accessible: {relative}")
+            if self.is_ignored(rel):
+                raise AccessDenied(f"Path is excluded by the vault ignore config: {relative}")
         return resolved
 
+    def _require_writable(self) -> None:
+        if self.read_only:
+            raise AccessDenied("Vault is read-only (OBSIDIAN_READ_ONLY is set)")
+
+    def is_allowed_note(self, rel_path: str) -> bool:
+        """True if a vault-relative path passes every access rule above."""
+        try:
+            self._resolve_path(rel_path)
+            return True
+        except (AccessDenied, OSError, ValueError):
+            return False
+
     def _to_relative(self, absolute: Path) -> str:
-        return str(absolute.relative_to(self.root))
+        return absolute.relative_to(self.root).as_posix()
 
     def _normalize_subtree(self, path: str) -> str:
         """Validate `path` stays inside the vault and return a clean prefix.
 
-        Empty input returns empty string (match-all). Otherwise resolves
-        against the vault root (rejecting `..` escapes) and returns the
-        relative path with a trailing slash so prefix-match doesn't bite
-        on similarly-named folders (e.g. 'a/b' must not match 'a/bc').
+        Empty input returns empty string (match-all). Otherwise returns
+        the vault-relative folder with a trailing slash so prefix-match
+        doesn't bite on similarly-named folders ('a/b' must not match 'a/bc').
         """
         if not path:
             return ""
-        # Validates against `..` escapes
-        self._resolve_path(path)
-        return path.rstrip("/") + "/"
+        rel = self._to_relative(self._resolve_path(path, note=False))
+        return rel + "/" if rel else ""
 
     # -- Ignore predicate --
 
@@ -142,7 +206,9 @@ class Vault:
         base = root if root is not None else self.root
         for md_file in base.rglob("*.md"):
             rel = self._to_relative(md_file)
-            if self.is_ignored(rel):
+            # Same rules as explicit access, so a symlink pointing outside
+            # the vault (or into .obsidian/) never leaks into search results.
+            if not self.is_allowed_note(rel):
                 continue
             yield md_file
 
@@ -217,7 +283,7 @@ class Vault:
         """
         if (self.root / rel_path).is_dir():
             return
-        if self.is_ignored(rel_path):
+        if not self.is_allowed_note(rel_path):
             return
         entry = self._index_single(rel_path)
         with self._index_lock:
@@ -470,9 +536,7 @@ class Vault:
         resolves to the target path (bare stem, full path, alias —
         whichever Obsidian would resolve), no edit is made.
         """
-        from pathlib import Path as _Path
-
-        from .links import extract_wikilinks, resolve_wikilink
+        from .links import resolve_wikilink
 
         try:
             current = self.read_note(source)
@@ -483,7 +547,7 @@ class Vault:
         if target not in index:
             raise FileNotFoundError(f"target note not found: {target}")
 
-        target_stem = _Path(target).stem
+        target_stem = Path(target).stem
         for link in extract_wikilinks(current):
             resolved = resolve_wikilink(link, index)
             if resolved == target:
@@ -512,76 +576,84 @@ class Vault:
     def read_note(self, path: str) -> str:
         """Read note content. Records mtime for later conflict detection on write."""
         file_path = self._resolve_path(path)
-        if not file_path.exists():
+        if not file_path.is_file():
             raise FileNotFoundError(f"Note not found: {path}")
+        if file_path.stat().st_size > MAX_NOTE_BYTES:
+            raise ValueError(f"Note is larger than {MAX_NOTE_BYTES} bytes: {path}")
         content = file_path.read_text(encoding="utf-8")
         rel = self._to_relative(file_path)
         self._last_read_mtime[rel] = file_path.stat().st_mtime
         return content
 
+    def _conflict_error(self, path: str, file_path: Path) -> NoteConflictError:
+        # Snapshot the on-disk text so the agent can resolve without a
+        # follow-up read_note. Capped to keep payloads sane on big notes.
+        try:
+            current = file_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            current = ""
+        if len(current) > _CONFLICT_CONTENT_CAP:
+            current = current[:_CONFLICT_CONTENT_CAP] + (
+                f"\n... [truncated to first {_CONFLICT_CONTENT_CAP} chars]"
+            )
+        return NoteConflictError(
+            f"Note changed on disk since last read: {path}. "
+            f"Re-read the note (or use the content below) to merge, "
+            f"or pass force=True to overwrite.\n\n"
+            f"--- current content on disk ---\n{current}",
+            current_content=current,
+        )
+
+    def _after_write(self, file_path: Path) -> str:
+        """Refresh mtime baseline, index entry and embeddings after a write."""
+        rel = self._to_relative(file_path)
+        self._last_read_mtime[rel] = file_path.stat().st_mtime
+        with self._index_lock:
+            self.index[rel] = self._index_single(rel)
+        self._enqueue_embed(rel)
+        return rel
+
     def write_note(self, path: str, content: str, force: bool = False) -> str:
         """Create or overwrite a note.
 
-        If the file already exists on disk and has been modified since this
-        server last handed its contents to the model via read_note(), the
-        write is refused with NoteConflictError — typically because the user
-        edited the note in Obsidian in the meantime. Pass force=True to
-        override.
+        Overwriting an existing note requires that it was read first in
+        this session and hasn't changed on disk since (e.g. edited in
+        Obsidian); otherwise NoteConflictError. Pass force=True to override.
         """
+        self._require_writable()
+        _check_size(content)
         file_path = self._resolve_path(path)
         rel = self._to_relative(file_path)
 
         if file_path.exists() and not force:
-            disk_mtime = file_path.stat().st_mtime
             last_seen = self._last_read_mtime.get(rel)
-            # Only check if we have a baseline — a fresh write without any
-            # prior read (e.g. create_note_from_template) is allowed.
-            if last_seen is not None and disk_mtime > last_seen:
-                # Snapshot the on-disk text so the agent can resolve
-                # without a follow-up read_note. Cap to keep payloads
-                # sane on big notes.
-                try:
-                    disk_text = file_path.read_text(encoding="utf-8")
-                except (OSError, UnicodeDecodeError):
-                    disk_text = ""
-                truncated_marker = ""
-                if len(disk_text) > _CONFLICT_CONTENT_CAP:
-                    disk_text = disk_text[:_CONFLICT_CONTENT_CAP]
-                    truncated_marker = (
-                        f"\n... [truncated to first {_CONFLICT_CONTENT_CAP} chars]"
-                    )
-                current = disk_text + truncated_marker
+            if last_seen is None:
                 raise NoteConflictError(
-                    f"Note changed on disk since last read: {path}. "
-                    f"Re-read the note (or use the content below) to merge, "
-                    f"or pass force=True to overwrite.\n\n"
-                    f"--- current content on disk ---\n{current}",
-                    current_content=current,
+                    f"Refusing to overwrite {path}: it exists and hasn't been read "
+                    f"in this session. read_note it first, or pass force=True."
                 )
+            if file_path.stat().st_mtime > last_seen:
+                raise self._conflict_error(path, file_path)
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(content, encoding="utf-8")
-        # Update index and mtime baseline
-        self._last_read_mtime[rel] = file_path.stat().st_mtime
-        with self._index_lock:
-            self.index[rel] = self._index_single(rel)
-        self._enqueue_embed(rel)
+        self._after_write(file_path)
         return f"Written: {path}"
 
     def append_note(self, path: str, content: str) -> str:
         """Append content to existing note, or create if missing."""
+        self._require_writable()
+        _check_size(content)
         file_path = self._resolve_path(path)
         if file_path.exists():
-            existing = file_path.read_text(encoding="utf-8")
-            file_path.write_text(existing + "\n" + content, encoding="utf-8")
+            if file_path.stat().st_size + len(content.encode("utf-8")) > MAX_NOTE_BYTES:
+                raise ValueError(f"Note would exceed {MAX_NOTE_BYTES} bytes: {path}")
+            with file_path.open("a", encoding="utf-8") as f:
+                f.write("\n" + content)
         else:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text(content, encoding="utf-8")
-        rel = self._to_relative(file_path)
-        self._last_read_mtime[rel] = file_path.stat().st_mtime
-        with self._index_lock:
-            self.index[rel] = self._index_single(rel)
-        self._enqueue_embed(rel)
+        self._after_write(file_path)
         return f"Appended: {path}"
 
     def list_notes(
@@ -597,7 +669,7 @@ class Vault:
         a file created seconds ago, before the watcher caught up) are
         re-parsed on the fly.
         """
-        search_path = self._resolve_path(folder) if folder else self.root
+        search_path = self._resolve_path(folder, note=False) if folder else self.root
         if not search_path.is_dir():
             raise FileNotFoundError(f"Folder not found: {folder}")
         paths = sorted(self._to_relative(f) for f in self._iter_markdown(search_path))
@@ -626,21 +698,32 @@ class Vault:
         return out
 
     def delete_note(self, path: str) -> str:
-        """Delete a note."""
+        """Move a note to the vault's .trash/ folder (Obsidian's own trash).
+
+        Nothing is ever unlinked, so a mistaken delete can be undone from
+        Obsidian or the filesystem.
+        """
+        self._require_writable()
         file_path = self._resolve_path(path)
-        if not file_path.exists():
+        if not file_path.is_file():
             raise FileNotFoundError(f"Note not found: {path}")
-        file_path.unlink()
         rel = self._to_relative(file_path)
+        trash_path = self.root / TRASH_DIR / rel
+        if trash_path.exists():
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            trash_path = trash_path.with_name(f"{trash_path.stem} {stamp}{trash_path.suffix}")
+        trash_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.rename(trash_path)
         self._forget_path(rel)
-        return f"Deleted: {path}"
+        return f"Deleted: {path} (moved to {self._to_relative(trash_path)})"
 
     def move_note(self, src: str, dest: str) -> str:
         """Move/rename a note and update all wikilinks across the vault."""
+        self._require_writable()
         src_path = self._resolve_path(src)
         dest_path = self._resolve_path(dest)
 
-        if not src_path.exists():
+        if not src_path.is_file():
             raise FileNotFoundError(f"Source not found: {src}")
         if dest_path.exists():
             raise FileExistsError(f"Destination already exists: {dest}")
@@ -690,7 +773,7 @@ class Vault:
         """
         results = []
         query_lower = query.lower()
-        root = self._resolve_path(path) if path else None
+        root = self._resolve_path(path, note=False) if path else None
         for md_file in self._iter_markdown(root):
             try:
                 content = md_file.read_text(encoding="utf-8")

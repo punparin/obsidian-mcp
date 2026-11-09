@@ -28,17 +28,22 @@ docker pull ghcr.io/punparin/obsidian-mcp:latest
 #    Ollama server handy.
 claude mcp add -s user obsidian -- \
   docker run -i --rm \
+    --network none --cap-drop ALL --security-opt no-new-privileges \
+    --user "$(id -u):$(id -g)" \
     -v /path/to/your/vault:/vault \
     -e OBSIDIAN_EMBEDDER=none \
     ghcr.io/punparin/obsidian-mcp:latest
 ```
+
+Want the agent to look but never touch? Add `-e OBSIDIAN_READ_ONLY=1`.
+See [security model](./docs/configuration.md#security-model).
 
 Then ask your agent something like *"list the notes I have about
 project X"* or *"search my vault for the rate-limiting decision."*
 The agent picks the right tool (`list_notes`, `search`,
 `semantic_search`, etc.) on its own.
 
-For the full semantic-search experience, point at an Ollama server:
+For the full semantic-search experience (drop `--network none`), point at an Ollama server:
 `-e OBSIDIAN_EMBEDDER=ollama -e OBSIDIAN_EMBEDDER_MODEL=qwen3-embedding:8b -e OLLAMA_URL=http://desktop.local:11434`.
 You can also use an OpenAI-compatible `/v1/embeddings` endpoint with
 `OBSIDIAN_EMBEDDER=openai-compatible`, `OBSIDIAN_EMBEDDER_MODEL`,

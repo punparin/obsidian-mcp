@@ -6,6 +6,35 @@ this project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- Fixed a path check that let `../<vault-name>-something/...` escape
+  the vault (string-prefix match); `delete_note` could remove files
+  outside the vault this way.
+- Tools can now only touch `.md` notes, never hidden folders
+  (`.obsidian/`, `.git/`, `.obsidian-mcp/`, …) — previously an agent
+  could write `.obsidian/plugins/*/main.js`, which Obsidian executes.
+- Symlinks pointing outside the vault are refused and never indexed.
+- Paths matched by the ignore config are now off-limits to explicit
+  reads/writes too, not just hidden from scans.
+- `write_note` refuses to overwrite an existing note that wasn't read
+  first (`force=true` to override). `create_note_from_template` never
+  overwrites.
+- `delete_note` moves notes to `.trash/` instead of erasing them.
+- New `OBSIDIAN_READ_ONLY=1` hides all write tools;
+  `OBSIDIAN_MAX_NOTE_BYTES` caps note size (default 5 MB).
+- Explorer: rejects foreign `Host` headers (DNS rebinding), sends
+  CSP / no-sniff / no-frame headers, pins the Cytoscape CDN script
+  with Subresource Integrity, disables `/docs`. Docs now publish the
+  port on `127.0.0.1` only.
+- Docker images run as a non-root user, no longer ship dev/test deps
+  or fastembed, and disable FastMCP's PyPI update check.
+
+### Removed
+
+- `requirements.txt` (out of sync with `pyproject.toml`, and pulled dev
+  dependencies into the Docker image).
+
 ## [0.11.0] - 2026-05-23
 
 ### Added
